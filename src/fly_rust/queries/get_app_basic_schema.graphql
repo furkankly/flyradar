@@ -1,0 +1,18 @@
+type Query {
+  app(name: String!): Payload!
+}
+
+type Payload {
+  id: String!
+  name: String!
+  platformVersion: String!
+  organization: Organization!
+}
+
+type Organization {
+  id: String!
+  internalNumericId: String!
+  slug: String!
+  rawSlug: String!
+  paidPlan: Boolean!
+}

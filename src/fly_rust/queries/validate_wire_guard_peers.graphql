@@ -1,0 +1,5 @@
+mutation ValidateWireGuardPeers($input: ValidateWireGuardPeersInput!) {
+  validateWireGuardPeers(input: $input) {
+    invalidPeerIps
+  }
+}

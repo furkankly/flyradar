@@ -1,0 +1,11 @@
+type Mutation {
+  deleteApp(appId: ID!): Payload!
+}
+
+type Payload {
+  organization: Organization!
+}
+
+type Organization {
+  id: ID!
+}

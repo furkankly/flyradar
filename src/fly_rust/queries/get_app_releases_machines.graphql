@@ -1,0 +1,21 @@
+query GetAppReleasesMachines($appName: String!, $limit: Int!) {
+  app(name: $appName) {
+    releases: releasesUnprocessed(first: $limit) {
+      nodes {
+        id
+        version
+        description
+        reason
+        status
+        imageRef
+        stable
+        user {
+          id
+          email
+          name
+        }
+        createdAt
+      }
+    }
+  }
+}

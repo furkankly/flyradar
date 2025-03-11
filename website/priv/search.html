@@ -1,0 +1,230 @@
+<!--INFO: NOT USED FOR NOW -->
+
+<script type="module">
+  // Import Pagefind as a module
+  import * as pagefindModule from "/pagefind/pagefind.js";
+
+  // Make it available globally so Alpine can access it
+  window.pagefindModule = pagefindModule;
+</script>
+<div
+  class="relative"
+  x-data="{ 
+  searchOpen: false,
+  searchQuery: '',
+  searchResults: [],
+  isLoading: false,
+  
+  init() {
+    // Listen for Cmd+K / Ctrl+K
+    window.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        this.searchOpen = true;
+        this.$nextTick(() => {
+          this.$refs.searchInput.focus();
+        });
+      }
+      
+      // Close on escape
+      if (e.key === 'Escape') {
+        this.searchOpen = false;
+      }
+    });
+  },
+  
+  async search() {
+    if (!this.searchQuery.trim()) {
+      this.searchResults = [];
+      return;
+    }
+    
+    this.isLoading = true;
+    
+    try {
+      // Use the module we imported and made global
+      const search = await window.pagefindModule.search(this.searchQuery);
+      const results = await Promise.all(
+        search.results.slice(0, 8).map(async (result) => {
+          const data = await result.data();
+          return {
+            title: data.meta.title,
+            excerpt: data.excerpt,
+            url: data.url
+          };
+        })
+      );
+      
+      this.searchResults = results;
+    } catch (err) {
+      console.error('Search error:', err);
+    } finally {
+      this.isLoading = false;
+    }
+  }
+}"
+>
+  <!-- Search trigger button -->
+  <button
+    @click="searchOpen = true; $nextTick(() => { $refs.searchInput.focus() })"
+    type="button"
+    class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50 focus:border-transparent focus:ring-2 focus:ring-blue-500 focus:outline-none"
+  >
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      class="h-4 w-4"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+    >
+      <path
+        fill-rule="evenodd"
+        d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+        clip-rule="evenodd"
+      />
+    </svg>
+    <span>Search</span>
+    <span class="ml-auto rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
+      >⌘K</span
+    >
+  </button>
+
+  <!-- Search popup -->
+  <div
+    x-cloak
+    x-show="searchOpen"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0 scale-95"
+    x-transition:enter-end="opacity-100 scale-100"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100 scale-100"
+    x-transition:leave-end="opacity-0 scale-95"
+    @click.away="searchOpen = false"
+    class="absolute top-full right-0 left-0 z-50 mx-auto mt-2 w-screen max-w-2xl"
+  >
+    <div
+      class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl"
+    >
+      <!-- Search input -->
+      <div class="relative border-b border-gray-100">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="absolute top-3.5 left-4 h-5 w-5 text-gray-400"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+            clip-rule="evenodd"
+          />
+        </svg>
+        <input
+          x-ref="searchInput"
+          x-model="searchQuery"
+          @input="search"
+          type="text"
+          placeholder="Search documentation..."
+          class="w-full py-3 pr-4 pl-12 text-gray-900 focus:outline-none"
+        />
+      </div>
+
+      <!-- Loading indicator -->
+      <div x-show="isLoading" class="flex justify-center py-8">
+        <svg
+          class="h-6 w-6 animate-spin text-blue-500"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            class="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            stroke-width="4"
+          ></circle>
+          <path
+            class="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          ></path>
+        </svg>
+      </div>
+
+      <!-- Search results -->
+      <div
+        x-show="!isLoading && searchResults.length > 0"
+        class="max-h-96 overflow-y-auto"
+      >
+        <ul class="py-2">
+          <template x-for="(result, index) in searchResults" :key="index">
+            <li>
+              <a
+                :href="result.url"
+                class="block px-4 py-3 transition-colors hover:bg-gray-50"
+              >
+                <h4
+                  x-text="result.title"
+                  class="mb-1 text-sm font-medium text-gray-900"
+                ></h4>
+                <p
+                  x-html="result.excerpt"
+                  class="line-clamp-2 text-xs text-gray-500"
+                ></p>
+              </a>
+            </li>
+          </template>
+        </ul>
+      </div>
+
+      <!-- No results state -->
+      <div
+        x-show="!isLoading && searchQuery && searchResults.length === 0"
+        class="px-4 py-8 text-center"
+      >
+        <p class="text-sm text-gray-500">
+          No results found for "<span x-text="searchQuery"></span>"
+        </p>
+      </div>
+
+      <!-- Empty state -->
+      <div x-show="!isLoading && !searchQuery" class="px-4 py-8 text-center">
+        <p class="text-sm text-gray-500">Enter a search term to find content</p>
+      </div>
+
+      <!-- Footer with keyboard shortcuts -->
+      <div
+        class="flex justify-between border-t border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500"
+      >
+        <div>
+          <span class="mr-3">
+            <kbd
+              class="rounded border border-gray-300 bg-white px-1.5 py-0.5 shadow-sm"
+              >↑</kbd
+            >
+            <kbd
+              class="rounded border border-gray-300 bg-white px-1.5 py-0.5 shadow-sm"
+              >↓</kbd
+            >
+            to navigate
+          </span>
+          <span>
+            <kbd
+              class="rounded border border-gray-300 bg-white px-1.5 py-0.5 shadow-sm"
+              >↵</kbd
+            >
+            to select
+          </span>
+        </div>
+        <div>
+          <kbd
+            class="rounded border border-gray-300 bg-white px-1.5 py-0.5 shadow-sm"
+            >Esc</kbd
+          >
+          to close
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

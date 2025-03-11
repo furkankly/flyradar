@@ -1,0 +1,42 @@
+type Query {
+  app(name: String!): Payload!
+}
+
+type Payload {
+  organization: Organization!
+  id: String!
+  name: String!
+  allocations(showCompleted: Boolean): [Allocation!]!
+  machines: Machines!
+}
+
+type Organization {
+  slug: String!
+}
+
+type Allocation {
+  id: String!
+  region: String!
+  privateIP: String!
+}
+
+type Machines {
+  nodes: [MachineNode!]!
+}
+
+type MachineNode {
+  state: String!
+  id: String!
+  region: String!
+  ips: Ips!
+}
+
+type Ips {
+  nodes: [IpNode!]!
+}
+
+type IpNode {
+  kind: String!
+  family: String!
+  ip: String!
+}

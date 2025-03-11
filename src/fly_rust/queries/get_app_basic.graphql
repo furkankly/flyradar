@@ -1,0 +1,14 @@
+query GetAppBasic($appName: String!) {
+  appbasic: app(name: $appName) {
+    id
+    name
+    platformVersion
+    organization {
+      id
+      internalNumericId
+      slug
+      rawSlug
+      paidPlan
+    }
+  }
+}

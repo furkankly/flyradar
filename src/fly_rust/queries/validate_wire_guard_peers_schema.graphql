@@ -1,0 +1,11 @@
+type Mutation {
+  validateWireGuardPeers(input: ValidateWireGuardPeersInput!): Payload!
+}
+
+input ValidateWireGuardPeersInput {
+  peerIps: [String!]!
+}
+
+type Payload {
+  invalidPeerIps: [String!]!
+}

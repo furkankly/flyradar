@@ -1,0 +1,7 @@
+mutation DeleteApp($appId: ID!) {
+  deleteApp(appId: $appId) {
+    organization {
+      id
+    }
+  }
+}

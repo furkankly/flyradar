@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-22.04
+            toolchain: stable
+
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-22.04
+            toolchain: stable
+
+          - target: x86_64-apple-darwin
+            os: macos-14
+            toolchain: nightly
+
+          - target: aarch64-apple-darwin
+            os: macos-14
+            toolchain: stable
+
+          - target: x86_64-pc-windows-msvc
+            os: windows-2022
+            toolchain: nightly
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        shell: bash
+        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Check that tag version and Cargo.toml version match
+        shell: bash
+        run: |
+          if ! grep -q "version = \"${{ env.RELEASE_VERSION }}\"" Cargo.toml; then
+            echo "Error: Tag version ${{ env.RELEASE_VERSION }} doesn't match version in Cargo.toml"
+            exit 1
+          fi
+
+      - name: Generate a changelog
+        uses: orhun/git-cliff-action@v4
+        id: git-cliff
+        with:
+          args: --latest --github-repo ${{ github.repository }}
+        env:
+          OUTPUT: CHANGES.md
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          targets: ${{ matrix.target }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build binary
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: ${{ runner.os == 'Linux' }}
+          command: build
+          args: --release --target ${{ matrix.target }}
+
+      - name: Determine binary path
+        shell: bash
+        run: |
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            bin="target/${{ matrix.target }}/release/flyradar.exe"
+          else
+            bin="target/${{ matrix.target }}/release/flyradar"
+          fi
+          echo "BIN=$bin" >> $GITHUB_ENV
+
+      - name: Import GPG key
+        if: runner.os != 'Windows'
+        id: import_gpg
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_RELEASE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Prepare archive
+        shell: bash
+        run: |
+          archive="flyradar-${{ env.RELEASE_VERSION }}-${{ matrix.target }}"
+          echo "ARCHIVE=$archive" >> $GITHUB_ENV
+
+          mkdir "$archive"
+          cp "${{ env.BIN }}" "$archive/"
+          cp {README.md,LICENSE*,CHANGELOG.md} "$archive/"
+
+      - name: Create zip archive (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          7z a "${{ env.ARCHIVE }}.zip" "${{ env.ARCHIVE }}"
+
+      - name: Create tarball and sign (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          tar czf "${{ env.ARCHIVE }}.tar.gz" "${{ env.ARCHIVE }}"
+          shasum -a 512 "${{ env.ARCHIVE }}.tar.gz" > "${{ env.ARCHIVE }}.tar.gz.sha512"
+          gpg --detach-sign --armor "${{ env.ARCHIVE }}.tar.gz"
+
+      - name: Upload release assets
+        uses: svenstaro/upload-release-action@v2
+        with:
+          file: flyradar-${{ env.RELEASE_VERSION }}-${{ matrix.target }}*
+          file_glob: true
+          overwrite: true
+          tag: ${{ github.ref }}
+          release_name: "Release ${{ env.RELEASE_VERSION }}"
+          body: ${{ steps.git-cliff.outputs.content }}
+          repo_token: ${{ secrets.GH_TOKEN }}
+    outputs:
+      version: ${{ env.RELEASE_VERSION }}
+
+  publish-crates-io:
+    name: Publish on crates.io
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish
+        run: cargo publish --locked --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  update-homebrew-formula:
+    name: Update Homebrew Formula
+    needs: build-release
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          homebrew-tap: furkankly/homebrew-tap
+          download-url: https://github.com/furkankly/flyradar/releases/download/${{ needs.build-release.outputs.version }}/flyradar-${{ needs.build-release.outputs.version }}-x86_64-apple-darwin.tar.gz
+        env:
+          COMMITTER_TOKEN: ${{ secrets.GH_TOKEN }}

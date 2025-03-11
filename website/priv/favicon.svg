@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:svgjs="http://svgjs.dev/svgjs" width="64" height="64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Terminal Background -->
+  <rect x="0" y="0" width="64" height="64" rx="8" fill="#1A1A1A"></rect>
+  
+  <!-- Terminal Header -->
+  <rect x="0" y="0" width="64" height="10" rx="8" fill="#333333"></rect>
+  
+  <!-- Terminal Control Buttons -->
+  <circle cx="8" cy="5" r="2" fill="#FF5F56"></circle>
+  <circle cx="15" cy="5" r="2" fill="#FFBD2E"></circle>
+  <circle cx="22" cy="5" r="2" fill="#27C93F"></circle>
+  
+  <!-- Simplified Hot Air Balloon -->
+  <!-- Balloon Body - using Tailwind violet-800 -->
+  <ellipse cx="32" cy="28" rx="18" ry="16" fill="#5B21B6"></ellipse>
+  
+  <!-- Balloon Base -->
+  <path d="M24 42 L40 42 L38 44 L26 44 Z" fill="#5A4DB3"></path>
+  
+  <!-- Hollow basket -->
+  <rect x="28" y="48" width="8" height="8" rx="1" fill="none" stroke="#5B21B6" stroke-width="1.5"></rect>
+  
+  <line x1="28" y1="48" x2="24" y2="42" stroke="#FFFFFF" stroke-width="0.8"></line>
+  <line x1="36" y1="48" x2="40" y2="42" stroke="#FFFFFF" stroke-width="0.8"></line>
+  
+  <!-- Stars around balloon - yellow -->
+  <circle cx="12" cy="20" r="1" fill="#FFDE7D"></circle>
+  <circle cx="18" cy="32" r="1" fill="#FFDE7D"></circle>
+  <circle cx="10" cy="45" r="1" fill="#FFDE7D"></circle>
+  <circle cx="52" cy="18" r="1" fill="#FFDE7D"></circle>
+  <circle cx="46" cy="30" r="1" fill="#FFDE7D"></circle>
+  <circle cx="54" cy="46" r="1" fill="#FFDE7D"></circle>
+  
+  <!-- Larger stars - yellow -->
+  <path d="M15 25 L16 27 L18 28 L16 29 L15 31 L14 29 L12 28 L14 27 Z" fill="#FFD700" opacity="0.9"></path>
+  <path d="M48 38 L49 40 L51 41 L49 42 L48 44 L47 42 L45 41 L47 40 Z" fill="#FFD700" opacity="0.9"></path>
+  
+</svg><style>@media (prefers-color-scheme: light) { :root { filter: none; } }
+@media (prefers-color-scheme: dark) { :root { filter: none; } }
+</style></svg>

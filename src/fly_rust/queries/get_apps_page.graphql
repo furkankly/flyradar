@@ -1,0 +1,30 @@
+query GetAppsPage($org: ID, $role: String, $after: String) {
+  apps(
+    type: "container"
+    first: 200
+    after: $after
+    organizationId: $org
+    role: $role
+  ) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      id
+      name
+      deployed
+      hostname
+      platformVersion
+      organization {
+        slug
+        name
+      }
+      currentRelease {
+        createdAt
+        status
+      }
+      status
+    }
+  }
+}

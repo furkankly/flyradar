@@ -1,0 +1,29 @@
+type Query {
+  app(name: String!, limit: Int!): Payload!
+}
+
+type Payload {
+  releasesUnprocessed: Nodes!
+}
+
+type Nodes {
+  nodes: [Release!]!
+}
+
+type Release {
+  id: String!
+  version: Int!
+  description: String!
+  reason: String!
+  status: String!
+  imageRef: String!
+  stable: Boolean!
+  user: User!
+  createdAt: String!
+}
+
+type User {
+  id: String!
+  email: String!
+  name: String!
+}

@@ -1,0 +1,20 @@
+query GetAppCompact($appName: String!) {
+  appcompact: app(name: $appName) {
+    id
+    name
+    hostname
+    deployed
+    status
+    appUrl
+    platformVersion
+    organization {
+      id
+      internalNumericId
+      slug
+      paidPlan
+    }
+    postgresAppRole: role {
+      name
+    }
+  }
+}

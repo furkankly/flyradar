@@ -1,0 +1,28 @@
+query GqlGetInstances($appName: String!) {
+  app(name: $appName) {
+    organization {
+      slug
+    }
+    id
+    name
+    allocations(showCompleted: false) {
+      id
+      region
+      privateIP
+    }
+    machines {
+      nodes {
+        state
+        id
+        region
+        ips {
+          nodes {
+            kind
+            family
+            ip
+          }
+        }
+      }
+    }
+  }
+}

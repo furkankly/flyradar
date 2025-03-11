@@ -1,0 +1,26 @@
+type Query {
+  app(name: String!): Payload!
+}
+
+type Payload {
+  id: String!
+  name: String!
+  hostname: String!
+  deployed: Boolean!
+  status: String!
+  appUrl: String!
+  platformVersion: String!
+  organization: Organization!
+  role: PostgresRole
+}
+
+type Organization {
+  id: String!
+  internalNumericId: String!
+  slug: String!
+  paidPlan: Boolean!
+}
+
+type PostgresRole {
+  name: String!
+}

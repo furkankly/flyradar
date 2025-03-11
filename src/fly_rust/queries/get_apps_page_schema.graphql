@@ -1,0 +1,40 @@
+type Query {
+  apps(
+    type: String!
+    first: Int!
+    after: String
+    organizationId: String
+    role: String
+  ): Payload!
+}
+
+type Payload {
+  pageInfo: PageInfo!
+  nodes: [Node!]!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String!
+}
+
+type Organization {
+  slug: String!
+  name: String!
+}
+
+type CurrentRelease {
+  createdAt: String!
+  status: String!
+}
+
+type Node {
+  id: String!
+  name: String!
+  deployed: Boolean!
+  hostname: String!
+  platformVersion: String!
+  organization: Organization!
+  currentRelease: CurrentRelease
+  status: String!
+}

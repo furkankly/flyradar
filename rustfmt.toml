@@ -1,0 +1,6 @@
+# configuration for https://rust-lang.github.io/rustfmt/
+
+ignore = ["async-nats"]
+imports_granularity = "Module"
+group_imports = "StdExternalCrate"
+use_field_init_shorthand = true

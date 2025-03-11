@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content="Manage your Fly.io resources in style." />
+    <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://flyradar.fly.dev" />
+    <meta property="og:title" content="flyradar" />
+    <meta
+      property="og:description"
+      content="Manage your Fly.io resources in style."
+    />
+    <meta property="og:image" content="https://flyradar.fly.dev/og-image.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <script
+      defer
+      src="https://umami.furkankly.dev/script.js"
+      data-website-id="6bf81bca-699f-434d-bc14-75ae828975b1"
+    ></script>
+
+    <title>Manage your Fly.io resources in style · flyradar</title>
+    <link href="./output.css" rel="stylesheet" />
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bitter:ital,wght@0,100..900;1,100..900&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@200;300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bitter:ital,wght@0,100..900;1,100..900&display=swap"
+      rel="stylesheet"
+    />
+
+    <script
+      src="https://unpkg.com/htmx.org@2.0.2"
+      integrity="sha384-Y7hw+L/jvKeWIRRkqWYfPcvVxHzVzn5REgzbawhxAuQGwX1XWe70vji+VSeHOThJ"
+      crossorigin="anonymous"
+    ></script>
+
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+  </head>
+  <body class="relative h-full bg-linear-to-r from-blue-100 to-fuchsia-100">
+    <div class="flex-col items-center gap-10 lg:flex lg:h-screen">
+      <div
+        class="flex w-full bg-white/40 p-4 px-8 md:max-w-6xl lg:rounded-full"
+      >
+        <a href="/" class="mr-auto flex items-center space-x-3">
+          <span class="text-xl font-bold text-violet-800">flyradar</span>
+        </a>
+        <ul class="flex items-center space-x-4">
+          <li class="group">
+            <a
+              class="transition duration-75 ease-in-out group-hover:text-green-500"
+              href="https://github.com/furkankly/flyradar"
+              target="_blank"
+            >
+              <i data-lucide="github"></i>
+            </a>
+          </li>
+          <li class="group">
+            <a
+              class="transition duration-75 ease-in-out group-hover:text-blue-400"
+              href="https://x.com/furkanklyy"
+              target="_blank"
+            >
+              <i data-lucide="twitter"></i>
+            </a>
+          </li>
+        </ul>
+      </div>
+      <h1 class="font-heading text-navy p-4 text-center text-4xl">
+        Manage Your Fly.io Resources In Style With
+        <em class="relative z-0 inline-block"
+          >flyradar
+          <svg
+            viewBox="0 0 1213 73"
+            aria-hidden="true"
+            preserveAspectRatio="none"
+            height="12"
+            class="absolute -bottom-0.5 left-0 -z-1 h-3 w-full text-purple-400 sm:bottom-0 md:bottom-[3px]"
+          >
+            <g buffered-rendering="static">
+              <path
+                fill="url(#underline-gradient)"
+                d="M1213.19 35.377c2.37-13.011-22.95-10.753-31.04-14.087C1086.89 5.705 911.742 2.887 815.218 2.809c-78.003.231-155.966-1.833-233.961.481-57.545.429-114.885 6.164-172.419 7.383-121.164 5.39-242.94 10.751-362.507 32.199-12.356 3.286-25.614 4.255-37.332 9.401-29.507 22.983 27.103 20.15 39.468 17.234 357.956-47.703 362.767-46.261 636.452-50.97 121.033-2.508 241.892 6.658 428.341 19.243 4.74.404 8.98-4.032 8-8.788a942.105 942.105 0 0154.69 6.378c9.44 1.843 18.92 3.583 28.29 5.729 4.01.839 8.02-1.718 8.95-5.712v-.01z"
+              ></path>
+            </g>
+            <defs>
+              <linearGradient
+                id="underline-gradient"
+                gradientTransform="rotate(110)"
+              >
+                <stop offset="5%" stop-color="#CA7FF8"></stop>
+                <stop offset="95%" stop-color="#795BE9"></stop>
+              </linearGradient>
+            </defs>
+          </svg>
+        </em>
+      </h1>
+      <div
+        class="flex flex-1 flex-col items-center justify-center gap-20 lg:flex-row"
+      >
+        <div
+          id="features"
+          class="flex max-w-2xl flex-col rounded-2xl bg-linear-to-r from-blue-100 to-fuchsia-100 p-12 shadow-2xl"
+        >
+          <div class="mb-6">
+            <h2 class="mb-4 text-center text-2xl font-semibold">
+              <em>flyradar</em> is basically
+              <a class="hover:underline" href="https://k9scli.io/">k9s</a>
+              for the platform Fly.io
+            </h2>
+            <p class="text-md">
+              It continually watches for changes and lets you manage and observe
+              the associated fly.io resources.
+            </p>
+          </div>
+          <ul class="list-disc [&>*]:py-2">
+            <li>
+              Navigate around your existing apps, machines, volumes and secrets.
+            </li>
+            <li>
+              Open, restart and destroy your apps, view releases and services of
+              them.
+            </li>
+            <li>
+              Start, restart, stop, suspend, kill, destroy, cordon, uncordon
+              your VMs.
+            </li>
+            <li>Monitor, filter and dump the logs of your apps and VMs.</li>
+            <li>Destroy your volumes, stage unset your secrets.</li>
+          </ul>
+        </div>
+        <div
+          class="flex flex-col rounded border border-black subpixel-antialiased shadow-2xl md:w-[500px] lg:w-[700px]"
+        >
+          <div
+            class="flex h-6 items-center rounded-t border-b border-gray-500 bg-gray-100 text-center text-black"
+            id="headerTerminal"
+          >
+            <div
+              class="ml-2 flex h-3 w-3 items-center rounded-full border-red-900 bg-red-500 text-center shadow-inner"
+              id="closebtn"
+            ></div>
+            <div
+              class="ml-2 h-3 w-3 rounded-full border-yellow-900 bg-yellow-500 shadow-inner"
+              id="minbtn"
+            ></div>
+            <div
+              class="ml-2 h-3 w-3 rounded-full border-green-900 bg-green-500 shadow-inner"
+              id="maxbtn"
+            ></div>
+            <div class="mx-auto pr-16" id="terminaltitle">
+              <p class="text-center text-sm">Terminal</p>
+            </div>
+          </div>
+          <div
+            class="relative flex h-full flex-1 items-center justify-center bg-black font-mono text-xs text-green-200"
+            id="console"
+          >
+            <img class="mx-auto h-full object-cover" src="/flyradar.png" />
+          </div>
+        </div>
+      </div>
+      <div class="h-10"></div>
+    </div>
+
+    <div id="installation" class="mx-auto max-w-6xl">
+      <h2 class="my-4 px-2 text-2xl font-semibold">Installation</h2>
+      <div class="mb-6 border-l-4 border-blue-500 bg-blue-50 p-4 text-blue-700">
+        <p class="font-medium">Note</p>
+        <p>
+          <em>flyradar</em> is an OSS third-party tool and is not an official
+          Fly.io project.
+        </p>
+      </div>
+      <div
+        class="mb-6 border-l-4 border-amber-500 bg-amber-50 p-4 text-amber-700"
+      >
+        <p class="font-medium">Prerequisites</p>
+        <p>
+          <em>flyradar</em> relies on the Fly CLI for authentication and its
+          built-in agent for operational functionality. Make sure you have
+          <a
+            href="https://fly.io/docs/hands-on/install-flyctl/"
+            class="text-amber-800 underline"
+            >flyctl</a
+          >
+          installed on your system before proceeding.
+        </p>
+      </div>
+      <div class="flex flex-col gap-4 md:gap-6">
+        <div class="p-4">
+          <div class="mb-2 font-medium md:text-xl">Cargo</div>
+          <div
+            class="group inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-100 to-fuchsia-100 p-4 font-mono shadow-md md:text-lg"
+            x-data="{ copied: false }"
+          >
+            <span class="text-sm select-all md:text-base"
+              >cargo install flyradar</span
+            >
+            <button
+              class="relative transform rounded p-1 hover:cursor-pointer hover:bg-gray-600 hover:text-white"
+              @click="copied = true; navigator.clipboard.writeText('cargo install flyradar'); setTimeout(() => copied = false, 500)"
+            >
+              <span
+                x-cloak
+                class="absolute -top-8 right-0 rounded bg-gray-900 px-2 py-1 text-xs whitespace-nowrap text-white transition-opacity duration-200"
+                :class="copied ? 'opacity-100' : 'opacity-0'"
+              >
+                Copied!
+              </span>
+              <i data-lucide="clipboard"></i>
+            </button>
+          </div>
+        </div>
+        <div class="p-4">
+          <div class="mb-2 font-medium md:text-xl">Homebrew</div>
+
+          <div
+            class="group inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-100 to-fuchsia-100 p-4 font-mono shadow-md md:text-lg"
+            x-data="{ copied: false }"
+          >
+            <span class="text-sm select-all md:text-base">
+              brew install furkankly/tap/flyradar
+            </span>
+            <button
+              class="relative transform rounded p-1 hover:cursor-pointer hover:bg-gray-600 hover:text-white"
+              @click="copied = true; navigator.clipboard.writeText('brew install furkankly/tap/flyradar'); setTimeout(() => copied = false, 500)"
+            >
+              <span
+                x-cloak
+                class="absolute -top-8 right-0 rounded bg-gray-900 px-2 py-1 text-xs whitespace-nowrap text-white transition-opacity duration-200"
+                :class="copied ? 'opacity-100' : 'opacity-0'"
+              >
+                Copied!
+              </span>
+              <i data-lucide="clipboard"></i>
+            </button>
+          </div>
+        </div>
+        <div class="p-4">
+          <div class="mb-2 font-medium md:text-xl">Binaries</div>
+          <p class="mb-2 text-gray-700">
+            Binaries for Linux, Windows and Mac are available as tarballs in the
+            <a
+              href="https://github.com/furkankly/flyradar/releases"
+              class="text-blue-600 hover:underline"
+              >release page</a
+            >.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div id="previews" class="mx-auto max-w-6xl">
+      <h2 class="my-4 px-2 text-2xl font-semibold">Previews</h2>
+      <div class="flex flex-col gap-2 md:gap-6">
+        <div class="p-1">
+          <div class="md:text-xl">View and interact with your apps.</div>
+          <img src="/apps.png" />
+        </div>
+        <div class="p-1">
+          <div class="md:text-xl">View and interact with your machines.</div>
+          <img src="/machines.png" />
+        </div>
+        <div class="p-1">
+          <div class="md:text-xl">View and interact with your volumes.</div>
+          <img src="/volumes.png" />
+        </div>
+        <div class="p-1">
+          <div class="md:text-xl">View and interact with your secrets.</div>
+          <img src="/secrets.png" />
+        </div>
+        <div class="p-1">
+          <div class="md:text-xl">View and interact with your app logs.</div>
+          <img src="/app_logs.png" />
+        </div>
+        <div class="p-1">
+          <div class="md:text-xl">
+            View and interact with your machine logs.
+          </div>
+          <img src="/machine_logs.png" />
+        </div>
+      </div>
+    </div>
+
+    <footer class="bg-gray-100 py-6">
+      <div
+        x-data
+        class="text-center text-gray-600"
+        x-text="`&copy; ${new Date().getFullYear()} flyradar. MIT Licensed.`"
+      ></div>
+    </footer>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+      lucide.createIcons();
+    </script>
+  </body>
+</html>

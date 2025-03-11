@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Bricolage Grotesque", sans-serif;
+}
+
+@utility text-navy {
+  --tw-text-opacity: 1;
+  color: rgb(40 25 80 / var(--tw-text-opacity));
+}
+
+@utility font-heading {
+  font-family:
+    Bitter, ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-weight: 500;
+  line-height: 1.375;
+  letter-spacing: -0.025em;
+  word-spacing: 0.025em;
+}
+
+[x-cloak] {
+  display: none !important;
+}
