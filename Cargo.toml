@@ -1,6 +1,6 @@
 [package]
 name = "flyradar"
-version = "0.1.0-rc.0"
+version = "0.1.0-rc.1"
 authors = ["Furkan Kalaycioglu <furkankalaycioglu12@gmail.com>"]
 license = "MIT"
 edition = "2021"
