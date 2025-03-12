@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{io, time};
 
-use async_nats::connection::ipc_platform::connect_ipc;
-use async_nats::connection::{IpcStreamWrapper, NativeIpcStream};
+use async_nats_flyradar::connection::ipc_platform::connect_ipc;
+use async_nats_flyradar::connection::{IpcStreamWrapper, NativeIpcStream};
 use color_eyre::eyre::{
     Context, {self},
 };
@@ -587,7 +587,7 @@ impl ClientDialer {
     }
 }
 
-impl async_nats::Dialer for ClientDialer {
+impl async_nats_flyradar::Dialer for ClientDialer {
     fn dial(
         &self,
         addr: String,

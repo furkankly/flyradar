@@ -2,7 +2,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_nats;
+use async_nats_flyradar;
 use color_eyre::eyre;
 use futures::stream::BoxStream;
 use futures::StreamExt;
@@ -21,7 +21,7 @@ use crate::state::RdrResult;
 
 #[derive(Clone, Debug)]
 pub struct NatsLogStream {
-    pub nc: async_nats::Client,
+    pub nc: async_nats_flyradar::Client,
 }
 
 impl NatsLogStream {
@@ -48,7 +48,7 @@ impl NatsLogStream {
     async fn new_nats_client(
         dialer: ClientDialer,
         org_slug: &str,
-    ) -> RdrResult<async_nats::Client> {
+    ) -> RdrResult<async_nats_flyradar::Client> {
         let state = dialer.state.clone();
         let peer_ip = state.peer.peer_ip.parse::<IpAddr>()?;
 
@@ -68,7 +68,7 @@ impl NatsLogStream {
 
         let url = format!("ipc://[{}]:4223", nats_ip);
         let token = read_access_token().await?;
-        let options = async_nats::ConnectOptions::new()
+        let options = async_nats_flyradar::ConnectOptions::new()
             .require_tls(false)
             .with_dialer(Arc::new(dialer.clone()))
             .user_and_password(org_slug.to_string(), token)
@@ -111,7 +111,7 @@ impl LogStream for NatsLogStream {
 }
 
 async fn from_nats(
-    nc: &async_nats::Client,
+    nc: &async_nats_flyradar::Client,
     opts: &LogOptions,
     tx: mpsc::Sender<RdrResult<LogEntry>>,
 ) -> RdrResult<()> {

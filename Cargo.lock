@@ -98,8 +98,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-nats"
-version = "0.39.0"
+name = "async-nats-flyradar"
+version = "0.39.0-flyradar.1"
 dependencies = [
  "base64",
  "bytes",
@@ -724,9 +724,9 @@ checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
 
 [[package]]
 name = "flyradar"
-version = "0.1.0-rc.0"
+version = "0.1.0-rc.1"
 dependencies = [
- "async-nats",
+ "async-nats-flyradar",
  "async-trait",
  "backon",
  "chrono",

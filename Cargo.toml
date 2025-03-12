@@ -42,7 +42,6 @@ tokio-stream = "0.1.16"
 tempfile = "3.14.0"
 fslock = "0.2.1"
 async-trait = { version = "0.1.83" }
-async-nats = { git = "https://github.com/furkankly/nats.rs.git", package = "async-nats", branch = "ipc-support" }
 libc = "0.2.169"
 lazy_static = "1.5.0"
 parking_lot = "0.12.3"
@@ -50,3 +49,4 @@ fxhash = "0.2.1"
 strip-ansi-escapes = "0.2.1"
 tokio-util = "0.7.13"
 chrono-humanize = "0.2.3"
+async-nats-flyradar = "0.39.0-flyradar.1"
