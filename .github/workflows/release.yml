@@ -59,6 +59,7 @@ jobs:
           args: --latest --github-repo ${{ github.repository }}
         env:
           OUTPUT: CHANGES.md
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master

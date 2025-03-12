@@ -43,7 +43,7 @@ fn init_tracing() -> RdrResult<()> {
 }
 
 pub fn version() -> String {
-    let commit_hash = env!("FLYRADAR_GIT_INFO");
+    let commit_hash = option_env!("FLYRADAR_GIT_INFO").unwrap_or(env!("CARGO_PKG_VERSION"));
     let authors = clap::crate_authors!();
 
     format!(
