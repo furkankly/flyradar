@@ -15,30 +15,30 @@ include = ["src/**/*", "Cargo.*", "LICENSE*", "README.md", "CHANGELOG.md"]
 
 
 [dependencies]
-reqwest = { version = "0.12.7", features = [
+reqwest = { version = "0.12.13", features = [
   "json",
   "rustls-tls",
 ], default-features = false }
 clap = { version = "4.5.16", features = ["cargo", "derive", "string"] }
 color-eyre = "0.6.3"
 crossterm = { version = "0.28.1", features = ["event-stream"] }
-directories = "5.0.1"
+directories = "6.0.0"
 futures = "0.3.30"
 ratatui = { version = "0.29.0", features = ["unstable-widget-ref"] }
 serde = { version = "1.0.209", features = ["derive"] }
 serde_yaml = "0.9.34"
 tokio = { version = "1.39.3", features = ["full"] }
 tui-big-text = "0.7.0"
-tui-input = "0.10.1"
-tui-popup = "0.5.1"
+tui-input = "0.11.1"
+tui-popup = "0.6.0"
 textwrap = "0.16.1"
 serde_json = "1.0.128"
 unicode-width = "0.2.0"
-itertools = "0.13.0"
+itertools = "0.14.0"
 focusable = { version = "0.2.6", features = ["derive"] }
 tracing = { version = "0.1.40", features = ["log"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-tui-logger = { version = "0.14.4", features = ["tracing-support"] }
+tui-logger = { version = "0.17.0", features = ["tracing-support"] }
 chrono = { version = "0.4.38", features = ["serde"] }
 serde_path_to_error = "0.1.16"
 backon = { version = "1.2.0", features = ["tokio-sleep"] }
