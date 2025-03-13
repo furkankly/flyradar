@@ -96,7 +96,7 @@ commit_parsers = [
   { message = "^revert", group = "<!-- 9 -->◀️ Revert" },
 ]
 # regex for matching git tags
-tag_pattern = "^v?[0-9]+\\.[0-9]+\\.[0-9]+$"
+tag_pattern = "v?[0-9].*"
 # regex for skipping tags
 skip_tags = "beta|alpha"
 # regex for ignoring tags

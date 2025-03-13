@@ -2,15 +2,19 @@
 
 [**flyradar**](https://flyradar.fly.dev): Manage your Fly.io resources in style🪁
 
-## 0.1.0-rc.2 - 2025-03-12
+## 0.1.0 - 2025-03-13
 
 ### 🚀 Features
 
 - Implement initial versionby @furkankly
 
+### 🎨 Styling
+
+- *(tui)* Make text black for the highlighted row
+
 ### ⚙️ Miscellaneous Tasks
 
-- *(nats)* Start using async-nats-flyradar
+- *(nats)* Start using async-nats-flyradarby @furkankly
 
 
 ## New Contributors

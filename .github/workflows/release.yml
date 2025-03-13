@@ -52,15 +52,6 @@ jobs:
             exit 1
           fi
 
-      - name: Generate a changelog
-        uses: orhun/git-cliff-action@v4
-        id: git-cliff
-        with:
-          args: --latest --github-repo ${{ github.repository }}
-        env:
-          OUTPUT: CHANGES.md
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
@@ -120,6 +111,15 @@ jobs:
           tar czf "${{ env.ARCHIVE }}.tar.gz" "${{ env.ARCHIVE }}"
           shasum -a 512 "${{ env.ARCHIVE }}.tar.gz" > "${{ env.ARCHIVE }}.tar.gz.sha512"
           gpg --detach-sign --armor "${{ env.ARCHIVE }}.tar.gz"
+
+      - name: Generate a changelog
+        uses: orhun/git-cliff-action@v4
+        id: git-cliff
+        with:
+          args: --latest --github-repo ${{ github.repository }}
+        env:
+          OUTPUT: CHANGES.md
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: Upload release assets
         uses: svenstaro/upload-release-action@v2
