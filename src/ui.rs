@@ -463,7 +463,7 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
                     }))
                     .padding(Padding::horizontal(1)),
             )
-            .row_highlight_style(Style::default().bg(Palette::LIGHT_PURPLE));
+            .row_highlight_style(Style::default().bg(Palette::LIGHT_PURPLE).fg(Color::Black));
             frame.render_stateful_widget(
                 table,
                 layout[if is_multi_select_shown { 1 } else { 0 }],
