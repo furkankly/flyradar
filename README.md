@@ -15,17 +15,11 @@
 </p>
 
 <h4 align="center">
-  <img src="https://raw.githubusercontent.com/furkankly/flyradar/main/website/priv/flyradar.svg" width="64" ></img>
-  &nbsp;
+  <img src="https://raw.githubusercontent.com/furkankly/flyradar/main/website/priv/favicon.svg" width="24" ></img>
 <a href="https://flyradar.fly.dev/">Website</a>
-
 </h4>
 
 🪁 flyradar 🌟 is a terminal UI for managing and monitoring your Fly.io resources, inspired by [k9s](https://github.com/derailed/k9s). It provides an intuitive, keyboard-driven interface to interact with your Fly.io apps, and more—all from your terminal.
-
-<p align="center">
-  <img src="https://via.placeholder.com/800x400?text=flyradar+demo" alt="flyradar demo" width="80%" />
-</p>
 
 <p align="center">
 <em>Manage your Fly.io apps, VMs, volumes and secrets - all in your terminal</em>
@@ -62,6 +56,8 @@ Just run `flyradar`:
 flyradar
 ```
 
+![Demo](website/priv/quickstart.gif)
+
 ## Features
 
 - 💻 Interactive terminal UI for managing Fly.io resources
@@ -70,6 +66,8 @@ flyradar
 - 🎯 Focused on operational workflows (viewing, monitoring, deleting, logging) for existing resources
   - Creation workflows are intentionally left to the Fly CLI, as they tend to be more complex and change more frequently
   - Operational workflows have more stable interfaces and are naturally well-suited for a terminal UI
+
+![Features](website/priv/features.gif)
 
 ## Contributing
 
