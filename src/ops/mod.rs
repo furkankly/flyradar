@@ -15,6 +15,7 @@ use crate::fly_rust::machine_types::{RemoveMachineInput, RestartMachineInput, St
 use crate::fly_rust::request_builder::{
     RequestBuilderFly, RequestBuilderGraphql, RequestBuilderMachines, {self},
 };
+use crate::fly_rust::resource_organizations::OrganizationFilter;
 use crate::fly_rust::volume_types::RemoveVolumeInput;
 use crate::logs::LogOptions;
 use crate::state::{PopupType, RdrPopup, SharedState};
@@ -24,6 +25,7 @@ pub mod apps;
 mod lease;
 pub mod logs;
 pub mod machines;
+pub mod organizations;
 pub mod secrets;
 pub mod select_many_machines;
 pub mod volumes;
@@ -31,6 +33,7 @@ mod wait;
 
 #[derive(Debug)]
 pub enum IoEvent {
+    ListOrganizations(OrganizationFilter),
     ListApps,
     OpenApp(String),
     ViewAppReleases(String),
@@ -113,6 +116,13 @@ impl Ops {
 
     pub async fn handle_ops_event(&mut self, io_event: IoEvent) {
         match io_event {
+            IoEvent::ListOrganizations(filter) => {
+                if let Err(err) = organizations::list::list(self, filter).await {
+                    let mut shared_state_guard = self.shared_state.lock().unwrap();
+                    shared_state_guard.popup =
+                        Some(RdrPopup::new(PopupType::ErrorPopup, err.to_string()));
+                }
+            }
             IoEvent::ListApps => {
                 if let Err(err) = apps::list::list(self).await {
                     let mut shared_state_guard = self.shared_state.lock().unwrap();

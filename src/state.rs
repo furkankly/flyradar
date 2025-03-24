@@ -13,6 +13,7 @@ use tui_input::Input;
 
 use crate::command::{match_command, Command};
 use crate::fly_rust::machine_types::{RemoveMachineInput, RestartMachineInput, StopMachineInput};
+use crate::fly_rust::resource_organizations::OrganizationFilter;
 use crate::fly_rust::volume_types::RemoveVolumeInput;
 use crate::logs::entry::LogEntry;
 use crate::logs::LogOptions;
@@ -38,6 +39,7 @@ pub enum CurrentView {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CurrentScope {
+    Organizations,
     Apps,
     Machines,
     Volumes,
@@ -47,6 +49,7 @@ pub enum CurrentScope {
 impl CurrentScope {
     pub fn headers(&self) -> &[&str] {
         match self {
+            CurrentScope::Organizations => &["Name", "Slug", "Type"],
             CurrentScope::Apps => &["Name", "Organization", "Status", "Latest Deployment"],
             CurrentScope::Machines => &["Name", "State", "Region", "Updated At"],
             CurrentScope::Volumes => &[
@@ -68,6 +71,7 @@ impl CurrentScope {
 impl Display for CurrentScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            CurrentScope::Organizations => write!(f, "Organizations"),
             CurrentScope::Apps => write!(f, "Apps"),
             CurrentScope::Machines => write!(f, "Machines"),
             CurrentScope::Volumes => write!(f, "Volumes"),
@@ -77,6 +81,7 @@ impl Display for CurrentScope {
 }
 
 pub enum ResourceUpdate {
+    Organizations(Vec<Vec<String>>),
     Apps(Vec<Vec<String>>),
     Machines(Vec<Vec<String>>),
     Volumes(Vec<Vec<String>>),
@@ -191,7 +196,7 @@ impl Default for State {
             debugger_state: tui_logger::TuiWidgetState::new()
                 .set_default_display_level(log::LevelFilter::Info),
             splash_shown: Arc::new(AtomicBool::new(false)),
-            current_view: CurrentView::ResourceList(CurrentScope::Apps),
+            current_view: CurrentView::ResourceList(CurrentScope::Organizations),
             input_state: InputState::Hidden,
             current_view_tx: None,
             io_tx: None,
@@ -239,6 +244,11 @@ impl State {
                     _ = interval.tick() => {
                         if let CurrentView::ResourceList(scope) = &current_view {
                         match scope {
+                            CurrentScope::Organizations => {
+                                if let Some(io_tx) = io_tx_clone.as_ref() {
+                                    let _ = io_tx.send(IoEvent::ListOrganizations(OrganizationFilter::default())).await;
+                                }
+                            }
                             CurrentScope::Apps => {
                                 if let Some(io_tx) = io_tx_clone.as_ref() {
                                     let _ = io_tx.send(IoEvent::ListApps).await;
@@ -285,6 +295,7 @@ impl State {
                         if let CurrentView::ResourceList(current_scope) = &current_view {
                             let should_update = matches!(
                                 (&resource_update, current_scope),
+                                (ResourceUpdate::Organizations(_), CurrentScope::Organizations) |
                                 (ResourceUpdate::Apps(_), CurrentScope::Apps) |
                                 (ResourceUpdate::Machines(_), CurrentScope::Machines) |
                                 (ResourceUpdate::Volumes(_), CurrentScope::Volumes) |
@@ -293,6 +304,7 @@ impl State {
                             if should_update {
                                 let mut shared_state = shared_state_clone.lock().unwrap();
                                 match resource_update {
+                                    ResourceUpdate::Organizations(organizations) => shared_state.resource_list.set_items(organizations),
                                     ResourceUpdate::Apps(apps) => shared_state.resource_list.set_items(apps),
                                     ResourceUpdate::Machines(machines) => shared_state.resource_list.set_items(machines),
                                     ResourceUpdate::Volumes(volumes) => shared_state.resource_list.set_items(volumes),
@@ -382,10 +394,12 @@ impl State {
             // Cleanup the possible allocated logs resources while leaving logs screen
             self.logs_state = TuiWidgetState::new().set_default_display_level(LevelFilter::Trace);
             self.dispatch(IoEvent::StopLogs).await;
-            if self.get_current_app_name().is_none()
-                && new_view != CurrentView::ResourceList(CurrentScope::Apps)
-            {
-                return Err(eyre!("Please choose a fly app first."));
+            if let CurrentView::ResourceList(scope) = new_view {
+                if !(scope == CurrentScope::Apps || scope == CurrentScope::Organizations)
+                    && self.get_current_app_name().is_none()
+                {
+                    return Err(eyre!("Please choose a fly app first."));
+                }
             }
             // Reset the resource list entering a new resource view
             {
@@ -404,6 +418,10 @@ impl State {
         if let InputState::Command { input, command: _ } = &self.input_state {
             let command = input.value().parse::<Command>();
             let result = match command {
+                Ok(Command::Organizations) => {
+                    self.set_current_view(CurrentView::ResourceList(CurrentScope::Organizations))
+                        .await
+                }
                 Ok(Command::Apps) => {
                     self.set_current_view(CurrentView::ResourceList(CurrentScope::Apps))
                         .await

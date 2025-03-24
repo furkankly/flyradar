@@ -1,0 +1,18 @@
+type Query {
+  organizations(admin: Boolean!): Payload!
+}
+
+type Payload {
+  nodes: [Node!]!
+}
+
+type Node {
+  id: String!
+  slug: String!
+  name: String!
+  type: String!
+  paidPlan: Boolean!
+  billable: Boolean!
+  viewerRole: String!
+  internalNumericId: String!
+}

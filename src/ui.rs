@@ -92,6 +92,17 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
     let mut keymap = vec![(":cmd", "Command mode")];
 
     match state.current_view {
+        CurrentView::ResourceList(CurrentScope::Organizations) => {
+            keymap = [
+                &[
+                    ("<↑/↓>", "Select"),
+                    ("<Enter>", "List apps"),
+                    ("</>", "Search"),
+                ],
+                &keymap[..],
+            ]
+            .concat();
+        }
         CurrentView::ResourceList(CurrentScope::Apps) => {
             keymap = [
                 &[
@@ -382,7 +393,7 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
 
             // Skip ids for apps and machines as we don't show them.
             let data_skip_index = match current_scope {
-                CurrentScope::Apps | CurrentScope::Machines => 1,
+                &CurrentScope::Organizations | CurrentScope::Apps | CurrentScope::Machines => 1,
                 _ => 0,
             };
 

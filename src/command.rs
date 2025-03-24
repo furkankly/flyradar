@@ -4,10 +4,18 @@ use color_eyre::eyre::{eyre, Error};
 
 use crate::state::RdrResult;
 
-pub const COMMANDS: &[&str] = &["apps", "machines", "volumes", "secrets", "q!"];
+pub const COMMANDS: &[&str] = &[
+    "organizations",
+    "apps",
+    "machines",
+    "volumes",
+    "secrets",
+    "q!",
+];
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Command {
+    Organizations,
     Apps,
     Machines,
     Volumes,
@@ -20,6 +28,7 @@ impl FromStr for Command {
 
     fn from_str(s: &str) -> RdrResult<Self> {
         match s {
+            "o" | "orgs" | "organizations" => Ok(Self::Organizations),
             "a" | "app" | "apps" => Ok(Self::Apps),
             "m" | "machine" | "machines" => Ok(Self::Machines),
             "v" | "vol" | "volume" | "volumes" => Ok(Self::Volumes),
@@ -43,6 +52,7 @@ mod tests {
 
     #[test]
     fn test_command_matching() {
+        assert_eq!(match_command("o"), "organizations");
         assert_eq!(match_command("a"), "apps");
         assert_eq!(match_command("m"), "machines");
         assert_eq!(match_command("vo"), "volumes");

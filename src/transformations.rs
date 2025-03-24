@@ -9,6 +9,13 @@ use timeago::{Formatter, TimeUnit};
 // id is needed to be able to render the selected state optimistically in case of deletions happen in
 // between fetches
 #[derive(Debug)]
+pub struct ListOrganization {
+    pub id: String,
+    pub slug: String,
+    pub name: String,
+    pub type_: String,
+}
+#[derive(Debug)]
 pub struct ListApp {
     pub id: String,
     pub name: String,
@@ -57,6 +64,28 @@ pub fn format_time(time: &str) -> String {
     Formatter::new()
         .min_unit(TimeUnit::Seconds)
         .convert_chrono(time, now)
+}
+
+impl From<&ListOrganization> for Vec<String> {
+    fn from(org: &ListOrganization) -> Self {
+        vec![
+            org.id.clone(),
+            org.name.clone(),
+            org.slug.clone(),
+            org.type_.clone(),
+        ]
+    }
+}
+
+impl From<Vec<String>> for ListOrganization {
+    fn from(vec: Vec<String>) -> Self {
+        ListOrganization {
+            id: vec[0].clone(),
+            name: vec[1].clone(),
+            slug: vec[2].clone(),
+            type_: vec[3].clone(),
+        }
+    }
 }
 
 impl From<&ListApp> for Vec<String> {
@@ -182,6 +211,12 @@ impl From<Vec<String>> for ListSecret {
 /// items of SelectableList
 pub trait ResourceList: fmt::Debug + Send + Sync {
     fn transform(&self) -> Vec<Vec<String>>;
+}
+
+impl ResourceList for Vec<ListOrganization> {
+    fn transform(&self) -> Vec<Vec<String>> {
+        self.iter().map(Vec::<String>::from).collect()
+    }
 }
 
 impl ResourceList for Vec<ListApp> {
