@@ -38,6 +38,7 @@ pub enum PopupType {
     RestartResourcePopup,
     ViewAppReleasesPopup,
     ViewAppServicesPopup,
+    ViewCommandsPopup,
     StartMachinesPopup,
     StopMachinesPopup,
     KillMachinePopup,
@@ -74,7 +75,8 @@ impl RdrPopup {
             PopupType::InfoPopup
             | PopupType::ErrorPopup
             | PopupType::ViewAppReleasesPopup
-            | PopupType::ViewAppServicesPopup => Form::from_iter([TextBox::new("Dismiss").boxed()]),
+            | PopupType::ViewAppServicesPopup
+            | PopupType::ViewCommandsPopup => Form::from_iter([TextBox::new("Dismiss").boxed()]),
         });
 
         actions.reset_focus();
@@ -791,6 +793,11 @@ impl State {
     }
     pub fn clear_app_services_list(&mut self) {
         self.app_services_list = vec![];
+    }
+    pub fn open_view_commands_popup(&mut self) -> RdrResult<()> {
+        let message = "Commands".to_string();
+        self.open_popup(message, PopupType::ViewCommandsPopup, None);
+        Ok(())
     }
     pub fn open_start_machines_popup(&mut self) {
         let message = String::from("Are you sure to start the selected machines?");

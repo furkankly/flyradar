@@ -11,6 +11,7 @@ use tui_big_text::{BigText, PixelSize};
 use tui_input::Input;
 use unicode_width::UnicodeWidthStr;
 
+use crate::command::{Command, COMMANDS};
 use crate::state::view::View;
 use crate::state::{InputState, MultiSelectMode, MultiSelectModeReason, PopupType, State};
 use crate::widgets::focusable_check_box::CheckBox;
@@ -89,7 +90,11 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
         .constraints(vec![Constraint::Min(0), Constraint::Length(24)])
         .split(area);
 
-    let mut keymap = vec![("<Esc>", "Back/Cancel"), (":cmd", "Command mode")];
+    let mut keymap = vec![
+        ("<Ctrl-a>", "View commands"),
+        (":cmd", "Command mode"),
+        ("<Esc>", "Back/Cancel"),
+    ];
 
     let current_view = state.get_current_view();
     match current_view {
@@ -719,6 +724,14 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
                 ]),
                 0,
             ),
+            PopupType::ViewCommandsPopup => (
+                Line::from(vec![
+                    "🪁 ".to_span(),
+                    "Commands".fg(Palette::PINK).bold(),
+                    " 🪁".to_span(),
+                ]),
+                0,
+            ),
             PopupType::StartMachinesPopup => (
                 Line::from(vec![
                     "▶️ ".to_span(),
@@ -910,6 +923,61 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
                     .title_alignment(Alignment::Center)
                     .padding(Padding::vertical(1)),
             );
+
+            render_popup(
+                frame,
+                area,
+                percent_x as u16,
+                percent_y as u16,
+                popup,
+                content,
+                op_actions,
+                popup_actions,
+            );
+        } else if matches!(popup_state.popup_type, PopupType::ViewCommandsPopup) {
+            let percent_x = 100;
+            let percent_y = 75;
+            let headers = ["Name", "Command"];
+            let commands_list = COMMANDS
+                .iter()
+                .filter_map(|&cmd_str| {
+                    cmd_str
+                        .parse::<Command>()
+                        .ok()
+                        .map(|cmd| vec![cmd_str.to_string(), cmd.to_aliases().join(", ")])
+                })
+                .collect::<Vec<Vec<String>>>();
+            // INFO: calc width based on percent_x, then - padding 2, border 2
+            let max_cell_width =
+                ((area.width as usize) * percent_x / 100_usize).saturating_sub(4) / headers.len();
+
+            let rows = commands_list.iter().map(|row| {
+                let cells = row.iter().map(|value| {
+                    let content = if value.width() > max_cell_width {
+                        let truncated: String = value
+                            .chars()
+                            .take(max_cell_width.saturating_sub(3))
+                            .collect();
+                        format!("{}…", truncated)
+                    } else {
+                        value.clone()
+                    };
+                    Cell::from(Line::from(content))
+                });
+                Row::new(cells)
+            });
+
+            let content = Table::new(
+                rows,
+                &[Constraint::Length(max_cell_width as u16)].repeat(headers.len()),
+            )
+            .header(Row::new(
+                headers
+                    .to_vec()
+                    .iter()
+                    .map(|v| Cell::from((*v).fg(Palette::LIGHT_PINK).bold())),
+            ))
+            .column_spacing(0);
 
             render_popup(
                 frame,

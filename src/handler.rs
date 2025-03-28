@@ -83,7 +83,8 @@ pub async fn handle_key_events(key_event: KeyEvent, state: &mut State) -> RdrRes
                                     PopupType::InfoPopup
                                     | PopupType::ErrorPopup
                                     | PopupType::ViewAppReleasesPopup
-                                    | PopupType::ViewAppServicesPopup => Ok(None),
+                                    | PopupType::ViewAppServicesPopup
+                                    | PopupType::ViewCommandsPopup => Ok(None),
                                 }
                             };
                             if let Ok(action) = action {
@@ -251,6 +252,11 @@ pub async fn handle_key_events(key_event: KeyEvent, state: &mut State) -> RdrRes
                                 if !matches!(view, View::Secrets { .. }) {
                                     state.open_destroy_resource_popup()?;
                                 }
+                            }
+                            (KeyCode::Char('a'), _)
+                                if key_event.modifiers == KeyModifiers::CONTROL =>
+                            {
+                                state.open_view_commands_popup()?;
                             }
                             (KeyCode::Char('/'), _) => {
                                 state.enter_search_mode();

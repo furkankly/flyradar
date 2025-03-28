@@ -10,7 +10,7 @@ pub const COMMANDS: &[&str] = &[
     "machines",
     "volumes",
     "secrets",
-    "q!",
+    "quit",
 ];
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -33,16 +33,43 @@ impl FromStr for Command {
             "m" | "mac" | "machine" | "machines" => Ok(Self::Machines),
             "v" | "vol" | "volume" | "volumes" => Ok(Self::Volumes),
             "s" | "sec" | "secret" | "secrets" => Ok(Self::Secrets),
-            "q" | "q!" => Ok(Self::Quit),
+            "q" | "q!" | "quit" => Ok(Self::Quit),
             _ => Err(eyre!("Unknown command: {}", s)),
         }
     }
 }
+
+impl Command {
+    pub fn to_aliases(&self) -> &[&'static str] {
+        match self {
+            Command::Organizations => &["o", "org", "orgs", "organizations"],
+            Command::Apps => &["a", "app", "apps"],
+            Command::Machines => &["m", "mac", "machine", "machines"],
+            Command::Volumes => &["v", "vol", "volume", "volumes"],
+            Command::Secrets => &["s", "sec", "secret", "secrets"],
+            Command::Quit => &["q", "q!", "quit"],
+        }
+    }
+}
+
 pub fn match_command(s: &str) -> &str {
+    if s.is_empty() {
+        return s;
+    }
+
     COMMANDS
         .iter()
-        .find(|cmd| !s.is_empty() && cmd.len() > s.len() && cmd.starts_with(s))
-        .copied()
+        .filter_map(|&cmd_str| {
+            // Try to parse each command
+            cmd_str.parse::<Command>().ok().and_then(|cmd| {
+                // For each command, find the first alias that is a prefix match and longer
+                cmd.to_aliases()
+                    .iter()
+                    .find(|&&alias| alias.starts_with(s) && alias.len() > s.len())
+                    .copied()
+            })
+        })
+        .next()
         .unwrap_or(s)
 }
 
