@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures::stream::select_all;
-use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 use tokio_stream::StreamExt;
@@ -47,16 +46,11 @@ pub async fn logs(
         streams.push(stream);
         polling_handle.abort();
     } else {
-        let (_logs_tx, logs_rx) = mpsc::channel(100);
         // Start polling stream
         let polling_stream = PollingStream {
             request_builder_fly: ops.request_builder_fly.clone(),
         };
         let (polling_stream, polling_handle) = polling_stream.stream(opts);
-        {
-            let mut shared_state_guard = ops.shared_state.lock().unwrap();
-            shared_state_guard.logs_rx = Some(logs_rx);
-        }
 
         {
             let mut logs_resources_guard = ops.logs_resources.lock().unwrap();
@@ -66,7 +60,6 @@ pub async fn logs(
         streams.push(polling_stream);
 
         let nats_connect_fut = NatsLogStream::new(&ops.request_builder_graphql, opts);
-        info!("before ");
         tokio::select! {
             // Try to connect to NATS
             nats_connect_result = nats_connect_fut => {

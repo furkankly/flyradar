@@ -1,9 +1,8 @@
 use std::io;
-use std::sync::Arc;
 
 use clap::Parser;
 use config::{FullConfig, TokenConfig};
-use ops::{IoEvent, Ops};
+use ops::{IoReqEvent, IoRespEvent, Ops};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use tracing::error;
@@ -71,16 +70,16 @@ async fn main() -> RdrResult<()> {
             wire_guard_state: None,
         };
 
-        let (io_tx, mut io_rx) = tokio::sync::mpsc::channel::<IoEvent>(100);
+        let (io_req_tx, mut io_req_rx) = tokio::sync::mpsc::channel::<IoReqEvent>(32);
+        let (io_resp_tx, mut io_resp_rx) = tokio::sync::mpsc::channel::<IoRespEvent>(32);
         let mut state = State::default();
-        state.init(io_tx);
-        let shared_state_clone = Arc::clone(&state.shared_state);
+        state.init(io_req_tx);
         tokio::task::spawn(async move {
-            let ops = Ops::new(config, shared_state_clone);
-            while let Some(io_event) = io_rx.recv().await {
+            let ops = Ops::new(config, io_resp_tx);
+            while let Some(io_event) = io_req_rx.recv().await {
                 let mut ops_clone = ops.clone();
                 tokio::task::spawn(async move {
-                    ops_clone.handle_ops_event(io_event).await;
+                    ops_clone.handle_io_req(io_event).await;
                 });
             }
         });
@@ -96,20 +95,23 @@ async fn main() -> RdrResult<()> {
         while state.running {
             // Render the user interface.
             tui.draw(&mut state)?;
-            // Handle events.
-            match tui.events.next().await? {
-                Event::Tick => state.tick().await,
-                Event::Key(key_event) => {
-                    let res = handle_key_events(key_event, &mut state).await;
-                    if res.is_err() {
-                        error!("Handle key event err: {:#?}", res);
-                    }
+            tokio::select! {
+                Some(io_event) = io_resp_rx.recv() => {
+                    state.handle_io_resp(io_event).await;
                 }
-                Event::Mouse(_) => {}
-                Event::Resize(_, _) => {}
+                event = tui.events.next() => match event? {
+                    Event::Tick => state.tick().await,
+                    Event::Key(key_event) => {
+                        let res = handle_key_events(key_event, &mut state).await;
+                        if res.is_err() {
+                            error!("Handle key event err: {:#?}", res);
+                        }
+                    }
+                    Event::Mouse(_) => {}
+                    Event::Resize(_, _) => {}
+                }
             }
         }
-
         // Exit the user interface.
         tui.exit()?;
     }

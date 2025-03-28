@@ -1,5 +1,6 @@
 use std::sync::atomic::Ordering;
 
+use itertools::Itertools;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::symbols::border;
@@ -10,9 +11,8 @@ use tui_big_text::{BigText, PixelSize};
 use tui_input::Input;
 use unicode_width::UnicodeWidthStr;
 
-use crate::state::{
-    CurrentScope, CurrentView, InputState, MultiSelectMode, MultiSelectModeReason, PopupType, State,
-};
+use crate::state::view::View;
+use crate::state::{InputState, MultiSelectMode, MultiSelectModeReason, PopupType, State};
 use crate::widgets::focusable_check_box::CheckBox;
 use crate::widgets::focusable_text::TextBox;
 use crate::widgets::log_viewer::{TuiLoggerLevelOutput, TuiLoggerSmartWidget, TuiLoggerWidget};
@@ -89,24 +89,25 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
         .constraints(vec![Constraint::Min(0), Constraint::Length(24)])
         .split(area);
 
-    let mut keymap = vec![(":cmd", "Command mode")];
+    let mut keymap = vec![("<Esc>", "Back/Cancel"), (":cmd", "Command mode")];
 
-    match state.current_view {
-        CurrentView::ResourceList(CurrentScope::Organizations) => {
+    let current_view = state.get_current_view();
+    match current_view {
+        View::Organizations => {
             keymap = [
                 &[
-                    ("<↑/↓>", "Select"),
                     ("<Enter>", "List apps"),
+                    ("<↑/↓>", "Select"),
                     ("</>", "Search"),
+                    ("<Space>", "Toggle checkbox"),
                 ],
                 &keymap[..],
             ]
             .concat();
         }
-        CurrentView::ResourceList(CurrentScope::Apps) => {
+        View::Apps { .. } => {
             keymap = [
                 &[
-                    ("<↑/↓>", "Select"),
                     ("<Enter>", "List machines"),
                     ("<o>", "Open"),
                     ("<l>", "Logs"),
@@ -114,17 +115,18 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
                     ("<s>", "View services"),
                     ("<Ctrl-r>", "Restart"),
                     ("<Ctrl-d>", "Destroy"),
+                    ("<↑/↓>", "Select"),
                     ("</>", "Search"),
+                    ("<Space>", "Toggle checkbox"),
                 ],
                 &keymap[..],
             ]
             .concat();
         }
-        CurrentView::ResourceList(CurrentScope::Machines) => {
+        View::Machines { .. } => {
             keymap = [
                 &[
-                    ("<↑/↓>", "Select"),
-                    ("<l>", "Logs"),
+                    ("<Enter>, <l>", "Logs"),
                     ("<r>", "Restart"),
                     ("<s>", "Start"),
                     ("<u>", "Suspend"),
@@ -133,19 +135,39 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
                     ("<Ctrl-d>", "Destroy"),
                     ("<c>", "Cordon"),
                     ("<Shift-c>", "Uncordon"),
+                    ("<↑/↓>", "Select"),
                     ("</>", "Search"),
+                    ("<Space>", "Toggle checkbox"),
                 ],
                 &keymap[..],
             ]
             .concat();
         }
-        CurrentView::ResourceList(CurrentScope::Volumes) => {
-            keymap = [&[("<Ctrl-d>", "Destroy"), ("</>", "Search")], &keymap[..]].concat();
+        View::Volumes { .. } => {
+            keymap = [
+                &[
+                    ("<Ctrl-d>", "Destroy"),
+                    ("<↑/↓>", "Select"),
+                    ("</>", "Search"),
+                    ("<Space>", "Toggle checkbox"),
+                ],
+                &keymap[..],
+            ]
+            .concat();
         }
-        CurrentView::ResourceList(CurrentScope::Secrets) => {
-            keymap = [&[("<u>", "Stage Unset"), ("</>", "Search")], &keymap[..]].concat();
+        View::Secrets { .. } => {
+            keymap = [
+                &[
+                    ("<u>", "Stage Unset"),
+                    ("<↑/↓>", "Select"),
+                    ("</>", "Search"),
+                    ("<Space>", "Toggle checkbox"),
+                ],
+                &keymap[..],
+            ]
+            .concat();
         }
-        CurrentView::AppLogs(_) => {
+        View::AppLogs { .. } => {
             keymap = [
                 &[
                     ("<t>", "Toggle region selector"),
@@ -155,23 +177,27 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
                     ("<+/->", "Change filter level"),
                     ("<Ctrl-s>", "Dump logs"),
                     ("<PageUp/Down>", "Scroll"),
-                    ("<Esc>", "Reset scroll"),
+                    ("<r>", "Reset scroll"),
                 ],
                 &keymap[..],
             ]
             .concat();
         }
-        CurrentView::MachineLogs(_) => {
+        View::MachineLogs { .. } => {
             keymap = [
                 &[
                     ("<Ctrl-s>", "Dump logs"),
                     ("<PageUp/Down>", "Scroll"),
-                    ("<Esc>", "Reset scroll"),
+                    ("<r>", "Reset scroll"),
                 ],
                 &keymap[..],
             ]
             .concat();
         }
+    }
+
+    if matches!(state.multi_select_mode, MultiSelectMode::On(..)) {
+        keymap = [&keymap[..], &[("<Enter>", "Apply")]].concat();
     }
 
     let max_item_width = keymap
@@ -203,9 +229,18 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
                 .iter()
                 .skip(row_length * col_idx)
                 .zip(rows.iter())
-                .for_each(|(&(key, action), row)| {
+                .enumerate() // Add enumerate to track position
+                .for_each(|(i, (&(key, action), row))| {
+                    let is_last = i + row_length * col_idx == (keymap.len() - 1);
+                    let color =
+                        if matches!(state.multi_select_mode, MultiSelectMode::On(..)) && is_last {
+                            Palette::TEAL
+                        } else {
+                            Palette::LIGHT_PURPLE
+                        };
+
                     let line = Line::from(vec![
-                        Span::styled(key, Style::default().fg(Palette::LIGHT_PURPLE)),
+                        Span::styled(key, Style::default().fg(color)),
                         Span::raw(": "),
                         Span::raw(String::from(action) + " "),
                     ]);
@@ -305,44 +340,65 @@ fn highlight_search_result<'a>(line: Line<'a>, input: &'a str) -> Vec<Span<'a>> 
 }
 
 fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
-    let mut layout = vec![Constraint::Min(0)];
-    let is_multi_select_shown = !matches!(state.multi_select_mode, MultiSelectMode::Off);
+    let mut layout = vec![Constraint::Min(0), Constraint::Length(2)];
+
+    let current_view = state.get_current_view();
+    let is_multi_select_shown = matches!(state.multi_select_mode, MultiSelectMode::On(..))
+        && matches!(
+            current_view,
+            View::Organizations
+                | View::Apps { .. }
+                | View::Machines { .. }
+                | View::Volumes { .. }
+                | View::Secrets { .. }
+        );
     if is_multi_select_shown {
         layout.insert(0, Constraint::Length(2));
     }
-    let render_current_app = matches!(
-        &state.current_view,
-        CurrentView::ResourceList(CurrentScope::Machines)
-            | CurrentView::ResourceList(CurrentScope::Volumes)
-            | CurrentView::ResourceList(CurrentScope::Secrets)
-            | CurrentView::MachineLogs(_)
-    );
-    if render_current_app {
-        layout.push(Constraint::Length(2));
-    }
+
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(layout)
         .split(area);
 
-    if render_current_app {
-        if let Some(current_app) = state.get_current_app_name() {
-            let current_app_text = format!(" {current_app} ");
-            let current_app_text = Paragraph::new(
-                current_app_text
-                    .to_text()
+    let breadcrumbs = state.get_breadcrumbs();
+    let breadcrumbs_layout = breadcrumbs
+        .iter()
+        .map(|text| Constraint::Length((text.width() + 3) as u16))
+        .collect::<Vec<Constraint>>();
+
+    let breadcrumbs_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(breadcrumbs_layout)
+        .split(layout[layout.len() - 1]);
+
+    breadcrumbs
+        .iter()
+        .zip(breadcrumbs_layout.iter())
+        .for_each(|(breadcrumb, layout_chunk)| {
+            let text = format!(" {} ", breadcrumb);
+            let breadcrumb_widget = Paragraph::new(
+                text.to_text()
                     .bold()
-                    .bg(Palette::LIGHT_PURPLE)
+                    .bg(if current_view.to_breadcrumb().eq(breadcrumb) {
+                        Palette::PINK
+                    } else {
+                        Palette::LIGHT_PURPLE
+                    })
                     .fg(Palette::DARK_GRAY),
             )
             .wrap(Wrap { trim: false })
             .block(Block::default().padding(Padding::left(1)));
-            frame.render_widget(current_app_text, layout[layout.len() - 1]);
-        }
-    }
 
-    match &state.current_view {
-        CurrentView::ResourceList(scope) => {
+            frame.render_widget(breadcrumb_widget, *layout_chunk);
+        });
+
+    match current_view {
+        View::Organizations
+        | View::Apps { .. }
+        | View::Machines { .. }
+        | View::Volumes { .. }
+        | View::Secrets { .. } => {
             if is_multi_select_shown {
                 let multi_select_reason_feedback_text = match state.multi_select_mode {
                     MultiSelectMode::On(MultiSelectModeReason::RestartMachines) => {
@@ -372,28 +428,25 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
                     multi_select_reason_feedback_text
                         .to_text()
                         .bold()
-                        .fg(Palette::DARK_TEAL),
+                        .fg(Palette::TEAL),
                 )
                 .wrap(Wrap { trim: false })
                 .block(Block::default().padding(Padding::left(1)));
                 frame.render_widget(multi_select_reason_feedback_text, layout[0]);
             }
 
-            let current_scope = scope;
             // Set the correct index for the selected resource
-            let shared_state_guard = state.shared_state.lock().unwrap();
-            let resource_list = &shared_state_guard.resource_list;
-
+            let resource_list = &state.resource_list;
             let mut table_state = TableState::default();
             let selected_index = resource_list.state.selected();
             table_state.select(selected_index);
 
-            let headers = current_scope.headers();
+            let headers = current_view.headers();
             let max_cell_width = (layout[0].width as usize).saturating_sub(4) / headers.len();
 
             // Skip ids for apps and machines as we don't show them.
-            let data_skip_index = match current_scope {
-                &CurrentScope::Organizations | CurrentScope::Apps | CurrentScope::Machines => 1,
+            let data_skip_index = match current_view {
+                View::Organizations | View::Apps { .. } | View::Machines { .. } => 1,
                 _ => 0,
             };
 
@@ -421,7 +474,7 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
 
                         if is_multi_select_shown && i == 0 {
                             let prefix = if resource_list.multi_select_state.contains(&row[0]) {
-                                Span::from("[x] ").fg(Palette::DARK_TEAL)
+                                Span::from("[x] ").fg(Palette::TEAL)
                             } else {
                                 Span::from("[ ] ")
                             };
@@ -447,9 +500,19 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
             .block(
                 Block::default()
                     .title(Line::from({
-                        let mut spans = vec![Span::from(format!(" {} ", current_scope))
-                            .bold()
-                            .fg(Palette::PINK)];
+                        let scope_skip_index = if matches!(current_view, View::Organizations) {
+                            0
+                        } else {
+                            1
+                        };
+                        let scopes = state.get_scopes().iter().skip(scope_skip_index).join("/");
+                        let mut spans = vec![
+                            Span::from(format!(" {}(", current_view))
+                                .bold()
+                                .fg(Palette::PINK),
+                            Span::from(scopes).bold().fg(Palette::LIGHT_PURPLE),
+                            Span::from(") ").bold().fg(Palette::PINK),
+                        ];
                         if !resource_list.search_filter.is_empty() {
                             spans.push(Span::styled(
                                 format!("/{}", resource_list.search_filter),
@@ -481,7 +544,7 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
                 &mut table_state,
             );
         }
-        CurrentView::AppLogs(opts) => {
+        View::AppLogs { .. } => {
             // info!("Logs opts: {:#?}", opts);
             let logs = TuiLoggerSmartWidget::default()
                 .border_style(Style::new().fg({
@@ -497,8 +560,12 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
                 .highlight_style(Style::default().bg(Palette::DARK_PURPLE))
                 .title_target(Line::from(" Regions ").fg(Palette::PINK))
                 .title_log(Line::from({
-                    let spans =
-                        vec![Span::from(format!(" App {} logs", opts.app_name)).fg(Palette::PINK)];
+                    let scopes = state.get_scopes().iter().skip(1).join("/");
+                    let spans = vec![
+                        Span::from(" App logs(").bold().fg(Palette::PINK),
+                        Span::from(scopes).bold().fg(Palette::LIGHT_PURPLE),
+                        Span::from(") ").bold().fg(Palette::PINK),
+                    ];
                     // if !resource_list.search_filter.is_empty() {
                     //     spans.push(Span::styled(
                     //         format!("/{}", resource_list.search_filter),
@@ -525,7 +592,7 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
 
             frame.render_widget(logs, layout[0]);
         }
-        CurrentView::MachineLogs(opts) => {
+        View::MachineLogs { .. } => {
             // info!("Logs opts: {:#?}", opts);
             let logs = TuiLoggerWidget::default()
                 .block(
@@ -541,12 +608,12 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
                             }
                         }))
                         .title(Line::from({
-                            let spans = vec![Span::from(format!(
-                                " Machine {} logs ",
-                                opts.vm_id.clone().unwrap()
-                            ))
-                            .bold()
-                            .fg(Palette::PINK)];
+                            let scopes = state.get_scopes().iter().skip(1).join("/");
+                            let spans = vec![
+                                Span::from(" Machine logs(").bold().fg(Palette::PINK),
+                                Span::from(scopes).bold().fg(Palette::LIGHT_PURPLE),
+                                Span::from(") ").bold().fg(Palette::PINK),
+                            ];
                             // if !resource_list.search_filter.is_empty() {
                             //     spans.push(Span::styled(
                             //         format!("/{}", resource_list.search_filter),
@@ -578,23 +645,22 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
 }
 
 fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
-    let shared_state_guard = state.shared_state.lock().unwrap();
-    let popup_state = &shared_state_guard.popup;
+    let current_view = state.get_current_view();
+    let popup_state = &state.popup;
 
     if let Some(popup_state) = popup_state {
         let (title, popup_actions_index) = match popup_state.popup_type {
             PopupType::DestroyResourcePopup => {
-                let popup_actions_index =
-                    if state.current_view == CurrentView::ResourceList(CurrentScope::Machines) {
-                        1
-                    } else {
-                        0
-                    };
-                let title = match state.current_view {
-                    CurrentView::ResourceList(CurrentScope::Apps) => "Destroy the app",
-                    CurrentView::ResourceList(CurrentScope::Machines) => "Destroy the machine",
-                    CurrentView::ResourceList(CurrentScope::Volumes) => "Destroy the volume",
-                    CurrentView::ResourceList(CurrentScope::Secrets) => "Stage Unset the secret",
+                let popup_actions_index = if matches!(current_view, View::Machines { .. }) {
+                    1
+                } else {
+                    0
+                };
+                let title = match current_view {
+                    View::Apps { .. } => "Destroy the app",
+                    View::Machines { .. } => "Destroy the machine",
+                    View::Volumes { .. } => "Destroy the volume",
+                    View::Secrets { .. } => "Stage Unset the secret",
                     _ => "Destroy the resource",
                 };
                 (
@@ -607,9 +673,9 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
                 )
             }
             PopupType::RestartResourcePopup => {
-                let title = match state.current_view {
-                    CurrentView::ResourceList(CurrentScope::Apps) => "Restart the app",
-                    CurrentView::ResourceList(CurrentScope::Machines) => "Restart the machines",
+                let title = match current_view {
+                    View::Apps { .. } => "Restart the app",
+                    View::Machines { .. } => "Restart the machines",
                     _ => "Restart the resource",
                 };
                 (
@@ -739,7 +805,7 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
                 .saturating_sub(max_cell_widths.iter().sum());
             max_cell_widths.push(last_col_max_cell_width);
 
-            let app_releases_list = &shared_state_guard.app_releases_list.clone();
+            let app_releases_list = &state.app_releases_list.clone();
             let rows = app_releases_list.iter().map(|row| {
                 let cells = row.iter().enumerate().map(|(i, value)| {
                     let max_cell_width = max_cell_widths[i];
@@ -806,7 +872,7 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
             // INFO: calc width based on percent_x, then - padding 2, border 2
             let max_cell_width =
                 ((area.width as usize) * percent_x / 100_usize).saturating_sub(4) / headers.len();
-            let app_services_list = &shared_state_guard.app_services_list.clone();
+            let app_services_list = &state.app_services_list.clone();
             let rows = app_services_list.iter().map(|row| {
                 let cells = row.iter().map(|value| {
                     let content = if value.width() > max_cell_width {

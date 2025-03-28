@@ -82,27 +82,34 @@ impl SelectableList {
         self.search_filter = new_search_filter.to_string();
     }
 
-    pub fn set_items(&mut self, new_items: Vec<Vec<String>>) {
+    pub fn set_items(&mut self, new_items: Vec<Vec<String>>, prev_selected_id: Option<String>) {
         let new_filtered_items: Vec<Vec<String>> = new_items
             .iter()
             .filter(|&row| row.iter().any(|s| s.contains(&self.search_filter)))
             .cloned()
             .collect();
 
-        // INFO: Adjust the selection in case there were deletions between fetches
+        // INFO:Adjust the selection based on prev selected id (new resource view)
+        let mut new_selected = prev_selected_id
+            .and_then(|id| new_filtered_items.iter().position(|item| item[0] == id))
+            .or(Some(0));
+
+        // INFO:Adjust the selection in case there were deletions between fetches (same resource view)
         if !self.filtered_items.is_empty() {
             let current_selected_item = self.selected();
-            let new_selected = current_selected_item.and_then(|current_selected_item| {
+
+            new_selected = current_selected_item.and_then(|current_selected_item| {
                 new_filtered_items
                     .iter()
                     .position(|item| item[0] == current_selected_item[0])
                     .or(Some(0))
             });
-            self.state.select(new_selected);
         }
+
+        self.state.select(new_selected);
         self.items = new_items;
         self.filtered_items = new_filtered_items;
-        //TODO: Adjust multi_select_state in between fetches
+        //TODO:Adjust multi_select_state in case there were deletions between fetches
     }
 
     /// Returns the selected item.
@@ -122,10 +129,6 @@ impl SelectableList {
     }
 
     /// Selects the next item.
-    //INFO: If we wanted to separate the selection state from the items and reduce the contention on items
-    //lock in the future, we might do so by giving up on the wrapping for the navigation. But I
-    //experimented with this and found myself updating items and state at the same time most of the
-    //time, so separating the locks doesn't make sense for now.
     pub fn next(&mut self, amount: usize) {
         let i = match self.state.selected() {
             Some(i) => {

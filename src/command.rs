@@ -28,11 +28,11 @@ impl FromStr for Command {
 
     fn from_str(s: &str) -> RdrResult<Self> {
         match s {
-            "o" | "orgs" | "organizations" => Ok(Self::Organizations),
+            "o" | "org" | "orgs" | "organizations" => Ok(Self::Organizations),
             "a" | "app" | "apps" => Ok(Self::Apps),
-            "m" | "machine" | "machines" => Ok(Self::Machines),
+            "m" | "mac" | "machine" | "machines" => Ok(Self::Machines),
             "v" | "vol" | "volume" | "volumes" => Ok(Self::Volumes),
-            "s" | "secret" | "secrets" => Ok(Self::Secrets),
+            "s" | "sec" | "secret" | "secrets" => Ok(Self::Secrets),
             "q" | "q!" => Ok(Self::Quit),
             _ => Err(eyre!("Unknown command: {}", s)),
         }
