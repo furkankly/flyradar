@@ -3,7 +3,7 @@ use crate::ops::{IoRespEvent, Ops};
 use crate::state::RdrResult;
 use crate::transformations::{ListMachine, ResourceList};
 
-pub async fn list(ops: &Ops, app: &str) -> RdrResult<()> {
+pub async fn list(ops: &Ops, seq_id: u64, app: &str) -> RdrResult<()> {
     let machines = list_machines::<ListMachine>(
         &ops.request_builder_machines,
         app,
@@ -18,6 +18,7 @@ pub async fn list(ops: &Ops, app: &str) -> RdrResult<()> {
 
     ops.io_resp_tx
         .send(IoRespEvent::Machines {
+            seq_id,
             list: sorted_machines.transform(),
         })
         .await?;

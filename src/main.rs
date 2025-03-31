@@ -73,9 +73,10 @@ async fn main() -> RdrResult<()> {
         let (io_req_tx, mut io_req_rx) = tokio::sync::mpsc::channel::<IoReqEvent>(32);
         let (io_resp_tx, mut io_resp_rx) = tokio::sync::mpsc::channel::<IoRespEvent>(32);
         let mut state = State::default();
+        let io_req_tx_clone = io_req_tx.clone();
         state.init(io_req_tx);
         tokio::task::spawn(async move {
-            let ops = Ops::new(config, io_resp_tx);
+            let ops = Ops::new(config, io_req_tx_clone, io_resp_tx);
             while let Some(io_event) = io_req_rx.recv().await {
                 let mut ops_clone = ops.clone();
                 tokio::task::spawn(async move {

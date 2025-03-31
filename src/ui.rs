@@ -98,17 +98,23 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
 
     let current_view = state.get_current_view();
     match current_view {
-        View::Organizations => {
+        View::Organizations { ref filter } => {
             keymap = [
                 &[
                     ("<Enter>", "List apps"),
+                    ("<s>", "Show"),
+                    ("<Shift-a>", "Toggle admin-only"),
                     ("<↑/↓>", "Select"),
                     ("</>", "Search"),
-                    ("<Space>", "Toggle checkbox"),
                 ],
                 &keymap[..],
             ]
             .concat();
+            if filter.is_admin_only() {
+                keymap.push(("<Ctrl-d>", "Delete"));
+                keymap.push(("<i>", "Invite"));
+                keymap.push(("<r>", "Remove"));
+            }
         }
         View::Apps { .. } => {
             keymap = [
@@ -236,13 +242,21 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
                 .zip(rows.iter())
                 .enumerate() // Add enumerate to track position
                 .for_each(|(i, (&(key, action), row))| {
-                    let is_last = i + row_length * col_idx == (keymap.len() - 1);
-                    let color =
-                        if matches!(state.multi_select_mode, MultiSelectMode::On(..)) && is_last {
-                            Palette::TEAL
+                    let multi_select_action = i + row_length * col_idx == (keymap.len() - 1);
+                    let color = if matches!(state.multi_select_mode, MultiSelectMode::On(..))
+                        && multi_select_action
+                    {
+                        Palette::TEAL
+                    } else if let View::Organizations { ref filter } = &current_view {
+                        let admin_only_actions = i + row_length * col_idx >= (keymap.len() - 3);
+                        if filter.is_admin_only() && admin_only_actions {
+                            Palette::BLUE
                         } else {
                             Palette::LIGHT_PURPLE
-                        };
+                        }
+                    } else {
+                        Palette::LIGHT_PURPLE
+                    };
 
                     let line = Line::from(vec![
                         Span::styled(key, Style::default().fg(color)),
@@ -351,7 +365,7 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
     let is_multi_select_shown = matches!(state.multi_select_mode, MultiSelectMode::On(..))
         && matches!(
             current_view,
-            View::Organizations
+            View::Organizations { .. }
                 | View::Apps { .. }
                 | View::Machines { .. }
                 | View::Volumes { .. }
@@ -399,7 +413,7 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
         });
 
     match current_view {
-        View::Organizations
+        View::Organizations { .. }
         | View::Apps { .. }
         | View::Machines { .. }
         | View::Volumes { .. }
@@ -451,7 +465,7 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
 
             // Skip ids for apps and machines as we don't show them.
             let data_skip_index = match current_view {
-                View::Organizations | View::Apps { .. } | View::Machines { .. } => 1,
+                View::Organizations { .. } | View::Apps { .. } | View::Machines { .. } => 1,
                 _ => 0,
             };
 
@@ -505,17 +519,23 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
             .block(
                 Block::default()
                     .title(Line::from({
-                        let scope_skip_index = if matches!(current_view, View::Organizations) {
-                            0
-                        } else {
-                            1
+                        let (is_view_orgs, is_admin_only) = match current_view {
+                            View::Organizations { ref filter } => (true, filter.is_admin_only()),
+                            _ => (false, false),
                         };
+                        let scope_skip_index = if is_view_orgs { 0 } else { 1 };
                         let scopes = state.get_scopes().iter().skip(scope_skip_index).join("/");
                         let mut spans = vec![
                             Span::from(format!(" {}(", current_view))
                                 .bold()
                                 .fg(Palette::PINK),
-                            Span::from(scopes).bold().fg(Palette::LIGHT_PURPLE),
+                            Span::from(scopes)
+                                .bold()
+                                .fg(if is_view_orgs && is_admin_only {
+                                    Palette::BLUE
+                                } else {
+                                    Palette::LIGHT_PURPLE
+                                }),
                             Span::from(") ").bold().fg(Palette::PINK),
                         ];
                         if !resource_list.search_filter.is_empty() {
@@ -937,7 +957,7 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
         } else if matches!(popup_state.popup_type, PopupType::ViewCommandsPopup) {
             let percent_x = 100;
             let percent_y = 75;
-            let headers = ["Name", "Command"];
+            let headers = ["Name", "Aliases"];
             let commands_list = COMMANDS
                 .iter()
                 .filter_map(|&cmd_str| {

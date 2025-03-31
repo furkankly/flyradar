@@ -136,74 +136,12 @@ pub async fn handle_key_events(key_event: KeyEvent, state: &mut State) -> RdrRes
                     _ => {}
                 }
                 match &state.get_current_view() {
-                    resource_list @ (View::Organizations
+                    resource_list @ (View::Organizations { .. }
                     | View::Apps { .. }
                     | View::Machines { .. }
                     | View::Volumes { .. }
                     | View::Secrets { .. }) => {
                         match (key_event.code, resource_list) {
-                            // Machines
-                            (KeyCode::Char('r'), View::Machines { .. }) => {
-                                state.start_restart_machines();
-                            }
-                            (KeyCode::Char('s'), View::Machines { .. }) => {
-                                state.start_start_machines();
-                            }
-                            (KeyCode::Char('u'), View::Machines { .. }) => {
-                                state.start_suspend_machines();
-                            }
-                            (KeyCode::Char('t'), View::Machines { .. }) => {
-                                state.start_stop_machines();
-                            }
-                            (KeyCode::Char('k'), View::Machines { .. })
-                                if key_event.modifiers == KeyModifiers::CONTROL =>
-                            {
-                                state.open_kill_machine_popup();
-                            }
-                            (KeyCode::Char('c'), View::Machines { .. }) => {
-                                state.start_cordon_machines();
-                            }
-                            (KeyCode::Char('C'), View::Machines { .. }) => {
-                                state.start_uncordon_machines();
-                            }
-                            (KeyCode::Char('l'), View::Machines { .. }) => {
-                                state.navigate_to_machine_logs().await?;
-                            }
-                            // Apps
-                            (KeyCode::Char('o'), View::Apps { .. }) => {
-                                let app: ListApp = state.get_selected_resource()?.into();
-                                state
-                                    .dispatch(IoReqEvent::OpenApp { app_name: app.name })
-                                    .await;
-                            }
-                            (KeyCode::Char('r'), View::Apps { .. })
-                                if key_event.modifiers == KeyModifiers::CONTROL =>
-                            {
-                                state.open_restart_resource_popup()?;
-                            }
-                            (KeyCode::Char('v'), View::Apps { .. }) => {
-                                let app: ListApp = state.get_selected_resource()?.into();
-                                state.clear_app_releases_list();
-                                state
-                                    .dispatch(IoReqEvent::ViewAppReleases { app_name: app.name })
-                                    .await;
-                                state.open_view_app_releases_popup()?;
-                            }
-                            (KeyCode::Char('s'), View::Apps { .. }) => {
-                                let app: ListApp = state.get_selected_resource()?.into();
-                                state.clear_app_services_list();
-                                state
-                                    .dispatch(IoReqEvent::ViewAppServices { app_name: app.name })
-                                    .await;
-                                state.open_view_app_services_popup()?;
-                            }
-                            (KeyCode::Char('l'), View::Apps { .. }) => {
-                                state.navigate_to_app_logs().await?;
-                            }
-                            // Secrets
-                            (KeyCode::Char('u'), View::Secrets { .. }) => {
-                                state.start_unset_secrets();
-                            }
                             (KeyCode::Enter, view) => {
                                 if let MultiSelectMode::On(reason) = &state.multi_select_mode {
                                     if !state.resource_list.multi_select_state.is_empty() {
@@ -249,10 +187,80 @@ pub async fn handle_key_events(key_event: KeyEvent, state: &mut State) -> RdrRes
                             (KeyCode::Char('d'), view)
                                 if key_event.modifiers == KeyModifiers::CONTROL =>
                             {
-                                if !matches!(view, View::Secrets { .. }) {
+                                if !matches!(
+                                    view,
+                                    View::Secrets { .. } | View::Organizations { .. }
+                                ) {
                                     state.open_destroy_resource_popup()?;
                                 }
                             }
+                            // Orgs
+                            (KeyCode::Char('A'), View::Organizations { .. }) => {
+                                state.toggle_org_admin_only().await?;
+                            }
+                            // Apps
+                            (KeyCode::Char('o'), View::Apps { .. }) => {
+                                let app: ListApp = state.get_selected_resource()?.into();
+                                state
+                                    .dispatch(IoReqEvent::OpenApp { app_name: app.name })
+                                    .await;
+                            }
+                            (KeyCode::Char('r'), View::Apps { .. })
+                                if key_event.modifiers == KeyModifiers::CONTROL =>
+                            {
+                                state.open_restart_resource_popup()?;
+                            }
+                            (KeyCode::Char('v'), View::Apps { .. }) => {
+                                let app: ListApp = state.get_selected_resource()?.into();
+                                state.clear_app_releases_list();
+                                state
+                                    .dispatch(IoReqEvent::ViewAppReleases { app_name: app.name })
+                                    .await;
+                                state.open_view_app_releases_popup()?;
+                            }
+                            (KeyCode::Char('s'), View::Apps { .. }) => {
+                                let app: ListApp = state.get_selected_resource()?.into();
+                                state.clear_app_services_list();
+                                state
+                                    .dispatch(IoReqEvent::ViewAppServices { app_name: app.name })
+                                    .await;
+                                state.open_view_app_services_popup()?;
+                            }
+                            (KeyCode::Char('l'), View::Apps { .. }) => {
+                                state.navigate_to_app_logs().await?;
+                            }
+                            // Machines
+                            (KeyCode::Char('r'), View::Machines { .. }) => {
+                                state.start_restart_machines();
+                            }
+                            (KeyCode::Char('s'), View::Machines { .. }) => {
+                                state.start_start_machines();
+                            }
+                            (KeyCode::Char('u'), View::Machines { .. }) => {
+                                state.start_suspend_machines();
+                            }
+                            (KeyCode::Char('t'), View::Machines { .. }) => {
+                                state.start_stop_machines();
+                            }
+                            (KeyCode::Char('k'), View::Machines { .. })
+                                if key_event.modifiers == KeyModifiers::CONTROL =>
+                            {
+                                state.open_kill_machine_popup();
+                            }
+                            (KeyCode::Char('c'), View::Machines { .. }) => {
+                                state.start_cordon_machines();
+                            }
+                            (KeyCode::Char('C'), View::Machines { .. }) => {
+                                state.start_uncordon_machines();
+                            }
+                            (KeyCode::Char('l'), View::Machines { .. }) => {
+                                state.navigate_to_machine_logs().await?;
+                            }
+                            // Secrets
+                            (KeyCode::Char('u'), View::Secrets { .. }) => {
+                                state.start_unset_secrets();
+                            }
+                            // Common
                             (KeyCode::Char('a'), _)
                                 if key_event.modifiers == KeyModifiers::CONTROL =>
                             {

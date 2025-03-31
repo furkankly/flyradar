@@ -1,10 +1,11 @@
 use std::fmt::{self, Display};
 
+use crate::fly_rust::resource_organizations::OrganizationFilter;
 use crate::logs::LogOptions;
 
 #[derive(Clone, Debug)]
 pub enum View {
-    Organizations,
+    Organizations { filter: OrganizationFilter },
     // org_id is used for highlighting the correct row navigating back,
     // org_slug is used for filtering the apps and as part of breadcrumb
     Apps { org_id: String, org_slug: String },
@@ -22,7 +23,7 @@ pub enum View {
 impl View {
     pub fn headers(&self) -> &[&str] {
         match self {
-            View::Organizations => &["Name", "Slug", "Type"],
+            View::Organizations { .. } => &["Name", "Viewer Role", "Slug", "Type"],
             View::Apps { .. } => &["Name", "Organization", "Status", "Latest Deployment"],
             View::Machines { .. } => &["Name", "State", "Region", "Updated At"],
             View::Volumes { .. } => &[
@@ -43,7 +44,7 @@ impl View {
 
     pub fn to_breadcrumb(&self) -> String {
         match self {
-            View::Organizations => String::from("organization"),
+            View::Organizations { .. } => String::from("organization"),
             View::Apps { .. } => String::from("app"),
             View::Machines { .. } => String::from("machines"),
             View::Volumes { .. } => String::from("volumes"),
@@ -54,7 +55,11 @@ impl View {
 
     pub fn to_scope(&self) -> String {
         match self {
-            View::Organizations => String::from("all"),
+            View::Organizations { filter } => String::from(if filter.is_admin_only() {
+                "admin-only"
+            } else {
+                "all"
+            }),
             View::Apps { org_slug, .. } => String::from(org_slug),
             View::Machines { app_name, .. } => String::from(app_name),
             View::Volumes { app_name, .. } => String::from(app_name),
@@ -68,7 +73,7 @@ impl View {
 impl Display for View {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            View::Organizations => write!(f, "Organizations"),
+            View::Organizations { .. } => write!(f, "Organizations"),
             View::Apps { .. } => write!(f, "Apps"),
             View::Machines { .. } => write!(f, "Machines"),
             View::Volumes { .. } => write!(f, "Volumes"),

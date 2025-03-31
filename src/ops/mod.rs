@@ -35,9 +35,11 @@ mod wait;
 #[derive(Debug)]
 pub enum IoReqEvent {
     ListOrganizations {
+        seq_id: u64,
         filter: OrganizationFilter,
     },
     ListApps {
+        seq_id: u64,
         org_slug: String,
     },
     OpenApp {
@@ -50,48 +52,59 @@ pub enum IoReqEvent {
         app_name: String,
     },
     RestartApp {
+        seq_id: u64,
         app_name: String,
         params: AppRestartParams,
         org_slug: String,
     },
     DestroyApp {
+        seq_id: u64,
         app_name: String,
         org_slug: String,
     },
     ListMachines {
+        seq_id: u64,
         app_name: String,
     },
     RestartMachines {
+        seq_id: u64,
         app_name: String,
         machines: Vec<String>,
         params: RestartMachineInput,
     },
     StartMachines {
+        seq_id: u64,
         app_name: String,
         machines: Vec<String>,
     },
     StopMachines {
+        seq_id: u64,
         app_name: String,
         machines: Vec<String>,
         params: StopMachineInput,
     },
     KillMachine {
+        seq_id: u64,
         app_name: String,
         params: KillMachineInput,
     },
     SuspendMachines {
+        seq_id: u64,
         app_name: String,
         machines: Vec<String>,
     },
     DestroyMachine {
+        seq_id: u64,
         app_name: String,
         params: RemoveMachineInput,
     },
     CordonMachines {
+        seq_id: u64,
         app_name: String,
         machines: Vec<String>,
     },
     UncordonMachines {
+        seq_id: u64,
         app_name: String,
         machines: Vec<String>,
     },
@@ -103,16 +116,20 @@ pub enum IoReqEvent {
     },
     StopLogs,
     ListVolumes {
+        seq_id: u64,
         app_name: String,
     },
     DestroyVolume {
+        seq_id: u64,
         app_name: String,
         params: RemoveVolumeInput,
     },
     ListSecrets {
+        seq_id: u64,
         app_name: String,
     },
     UnsetSecrets {
+        seq_id: u64,
         app_name: String,
         keys: Vec<String>,
     },
@@ -121,18 +138,23 @@ pub enum IoReqEvent {
 #[derive(Debug)]
 pub enum IoRespEvent {
     Organizations {
+        seq_id: u64,
         list: Vec<Vec<String>>,
     },
     Apps {
+        seq_id: u64,
         list: Vec<Vec<String>>,
     },
     Machines {
+        seq_id: u64,
         list: Vec<Vec<String>>,
     },
     Volumes {
+        seq_id: u64,
         list: Vec<Vec<String>>,
     },
     Secrets {
+        seq_id: u64,
         list: Vec<Vec<String>>,
     },
     AppReleases {
@@ -152,12 +174,17 @@ pub struct Ops {
     pub request_builder_machines: RequestBuilderMachines,
     pub request_builder_graphql: RequestBuilderGraphql,
     request_builder_fly: RequestBuilderFly,
+    io_req_tx: Sender<IoReqEvent>,
     io_resp_tx: Sender<IoRespEvent>,
     logs_resources: Arc<Mutex<LogsResources>>,
 }
 
 impl Ops {
-    pub fn new(config: FullConfig, io_resp_tx: Sender<IoRespEvent>) -> Self {
+    pub fn new(
+        config: FullConfig,
+        io_req_tx: Sender<IoReqEvent>,
+        io_resp_tx: Sender<IoRespEvent>,
+    ) -> Self {
         //INFO: Fly.io apis close the connection with a keep-alive timeout value lower than hyper's default 90sec, hence we need this.
         let http_client = Client::builder()
             .pool_idle_timeout(Duration::from_secs(40))
@@ -180,6 +207,7 @@ impl Ops {
                 format!("{DEFAULT_API_BASE_URL}/api"),
                 config.token_config.access_token,
             ),
+            io_req_tx,
             io_resp_tx,
             logs_resources: Arc::new(Mutex::new(LogsResources {
                 cancellation_token_nats: CancellationToken::new(),
@@ -205,8 +233,8 @@ impl Ops {
 
     pub async fn handle_io_req(&mut self, io_event: IoReqEvent) {
         match io_event {
-            IoReqEvent::ListOrganizations { filter } => {
-                if let Err(err) = organizations::list::list(self, filter).await {
+            IoReqEvent::ListOrganizations { seq_id, filter } => {
+                if let Err(err) = organizations::list::list(self, seq_id, filter).await {
                     let _ = self
                         .io_resp_tx
                         .send(IoRespEvent::SetPopup {
@@ -216,8 +244,8 @@ impl Ops {
                         .await;
                 }
             }
-            IoReqEvent::ListApps { org_slug } => {
-                if let Err(err) = apps::list::list(self, org_slug).await {
+            IoReqEvent::ListApps { seq_id, org_slug } => {
+                if let Err(err) = apps::list::list(self, seq_id, org_slug).await {
                     let _ = self
                         .io_resp_tx
                         .send(IoRespEvent::SetPopup {
@@ -261,6 +289,7 @@ impl Ops {
                 }
             }
             IoReqEvent::RestartApp {
+                seq_id,
                 app_name,
                 params,
                 org_slug,
@@ -273,17 +302,21 @@ impl Ops {
                             message: err.to_string(),
                         })
                         .await;
-                } else if let Err(err) = apps::list::list(self, org_slug).await {
+                } else {
                     let _ = self
-                        .io_resp_tx
-                        .send(IoRespEvent::SetPopup {
-                            popup_type: PopupType::ErrorPopup,
-                            message: err.to_string(),
+                        .io_req_tx
+                        .send(IoReqEvent::ListApps {
+                            seq_id: seq_id + 1,
+                            org_slug,
                         })
                         .await;
                 }
             }
-            IoReqEvent::DestroyApp { app_name, org_slug } => {
+            IoReqEvent::DestroyApp {
+                seq_id,
+                app_name,
+                org_slug,
+            } => {
                 if let Err(err) = apps::destroy::destroy(self, app_name).await {
                     let _ = self
                         .io_resp_tx
@@ -292,18 +325,18 @@ impl Ops {
                             message: err.to_string(),
                         })
                         .await;
-                } else if let Err(err) = apps::list::list(self, org_slug).await {
+                } else {
                     let _ = self
-                        .io_resp_tx
-                        .send(IoRespEvent::SetPopup {
-                            popup_type: PopupType::ErrorPopup,
-                            message: err.to_string(),
+                        .io_req_tx
+                        .send(IoReqEvent::ListApps {
+                            seq_id: seq_id + 1,
+                            org_slug,
                         })
                         .await;
                 }
             }
-            IoReqEvent::ListMachines { app_name } => {
-                if let Err(err) = machines::list::list(self, &app_name).await {
+            IoReqEvent::ListMachines { seq_id, app_name } => {
+                if let Err(err) = machines::list::list(self, seq_id, &app_name).await {
                     let _ = self
                         .io_resp_tx
                         .send(IoRespEvent::SetPopup {
@@ -314,6 +347,7 @@ impl Ops {
                 }
             }
             IoReqEvent::RestartMachines {
+                seq_id,
                 app_name,
                 machines,
                 params,
@@ -328,9 +362,21 @@ impl Ops {
                             message: err.to_string(),
                         })
                         .await;
+                } else {
+                    let _ = self
+                        .io_req_tx
+                        .send(IoReqEvent::ListMachines {
+                            seq_id: seq_id + 1,
+                            app_name,
+                        })
+                        .await;
                 }
             }
-            IoReqEvent::StartMachines { app_name, machines } => {
+            IoReqEvent::StartMachines {
+                seq_id,
+                app_name,
+                machines,
+            } => {
                 if let Err(err) = machines::start::start(self, &app_name, machines).await {
                     let _ = self
                         .io_resp_tx
@@ -339,17 +385,18 @@ impl Ops {
                             message: err.to_string(),
                         })
                         .await;
-                } else if let Err(err) = machines::list::list(self, &app_name).await {
+                } else {
                     let _ = self
-                        .io_resp_tx
-                        .send(IoRespEvent::SetPopup {
-                            popup_type: PopupType::ErrorPopup,
-                            message: err.to_string(),
+                        .io_req_tx
+                        .send(IoReqEvent::ListMachines {
+                            seq_id: seq_id + 1,
+                            app_name,
                         })
                         .await;
                 }
             }
             IoReqEvent::StopMachines {
+                seq_id,
                 app_name,
                 machines,
                 params,
@@ -362,17 +409,21 @@ impl Ops {
                             message: err.to_string(),
                         })
                         .await;
-                } else if let Err(err) = machines::list::list(self, &app_name).await {
+                } else {
                     let _ = self
-                        .io_resp_tx
-                        .send(IoRespEvent::SetPopup {
-                            popup_type: PopupType::ErrorPopup,
-                            message: err.to_string(),
+                        .io_req_tx
+                        .send(IoReqEvent::ListMachines {
+                            seq_id: seq_id + 1,
+                            app_name,
                         })
                         .await;
                 }
             }
-            IoReqEvent::KillMachine { app_name, params } => {
+            IoReqEvent::KillMachine {
+                seq_id,
+                app_name,
+                params,
+            } => {
                 if let Err(err) = machines::kill::kill(self, &app_name, params).await {
                     let _ = self
                         .io_resp_tx
@@ -389,18 +440,20 @@ impl Ops {
                             message: String::from("Kill signal has been sent."),
                         })
                         .await;
-                }
-                if let Err(err) = machines::list::list(self, &app_name).await {
                     let _ = self
-                        .io_resp_tx
-                        .send(IoRespEvent::SetPopup {
-                            popup_type: PopupType::ErrorPopup,
-                            message: err.to_string(),
+                        .io_req_tx
+                        .send(IoReqEvent::ListMachines {
+                            seq_id: seq_id + 1,
+                            app_name,
                         })
                         .await;
                 }
             }
-            IoReqEvent::SuspendMachines { app_name, machines } => {
+            IoReqEvent::SuspendMachines {
+                seq_id,
+                app_name,
+                machines,
+            } => {
                 if let Err(err) = machines::suspend::suspend(self, &app_name, machines).await {
                     let _ = self
                         .io_resp_tx
@@ -409,17 +462,21 @@ impl Ops {
                             message: err.to_string(),
                         })
                         .await;
-                } else if let Err(err) = machines::list::list(self, &app_name).await {
+                } else {
                     let _ = self
-                        .io_resp_tx
-                        .send(IoRespEvent::SetPopup {
-                            popup_type: PopupType::ErrorPopup,
-                            message: err.to_string(),
+                        .io_req_tx
+                        .send(IoReqEvent::ListMachines {
+                            seq_id: seq_id + 1,
+                            app_name,
                         })
                         .await;
                 }
             }
-            IoReqEvent::DestroyMachine { app_name, params } => {
+            IoReqEvent::DestroyMachine {
+                seq_id,
+                app_name,
+                params,
+            } => {
                 if let Err(err) = machines::destroy::destroy(self, &app_name, params).await {
                     let _ = self
                         .io_resp_tx
@@ -428,17 +485,21 @@ impl Ops {
                             message: err.to_string(),
                         })
                         .await;
-                } else if let Err(err) = machines::list::list(self, &app_name).await {
+                } else {
                     let _ = self
-                        .io_resp_tx
-                        .send(IoRespEvent::SetPopup {
-                            popup_type: PopupType::ErrorPopup,
-                            message: err.to_string(),
+                        .io_req_tx
+                        .send(IoReqEvent::ListMachines {
+                            seq_id: seq_id + 1,
+                            app_name,
                         })
                         .await;
                 }
             }
-            IoReqEvent::CordonMachines { app_name, machines } => {
+            IoReqEvent::CordonMachines {
+                seq_id,
+                app_name,
+                machines,
+            } => {
                 if let Err(err) = machines::cordon::cordon(self, &app_name, machines).await {
                     let _ = self
                         .io_resp_tx
@@ -458,18 +519,20 @@ impl Ops {
                             ),
                         })
                         .await;
-                }
-                if let Err(err) = machines::list::list(self, &app_name).await {
                     let _ = self
-                        .io_resp_tx
-                        .send(IoRespEvent::SetPopup {
-                            popup_type: PopupType::ErrorPopup,
-                            message: err.to_string(),
+                        .io_req_tx
+                        .send(IoReqEvent::ListMachines {
+                            seq_id: seq_id + 1,
+                            app_name,
                         })
                         .await;
                 }
             }
-            IoReqEvent::UncordonMachines { app_name, machines } => {
+            IoReqEvent::UncordonMachines {
+                seq_id,
+                app_name,
+                machines,
+            } => {
                 if let Err(err) = machines::uncordon::uncordon(self, &app_name, machines).await {
                     let _ = self
                         .io_resp_tx
@@ -489,13 +552,11 @@ impl Ops {
                             ),
                         })
                         .await;
-                }
-                if let Err(err) = machines::list::list(self, &app_name).await {
                     let _ = self
-                        .io_resp_tx
-                        .send(IoRespEvent::SetPopup {
-                            popup_type: PopupType::ErrorPopup,
-                            message: err.to_string(),
+                        .io_req_tx
+                        .send(IoReqEvent::ListMachines {
+                            seq_id: seq_id + 1,
+                            app_name,
                         })
                         .await;
                 }
@@ -547,8 +608,8 @@ impl Ops {
                     .cancel();
                 self.cleanup_logs_resources().await;
             }
-            IoReqEvent::ListVolumes { app_name } => {
-                if let Err(err) = volumes::list::list(self, &app_name).await {
+            IoReqEvent::ListVolumes { seq_id, app_name } => {
+                if let Err(err) = volumes::list::list(self, seq_id, &app_name).await {
                     let _ = self
                         .io_resp_tx
                         .send(IoRespEvent::SetPopup {
@@ -558,7 +619,11 @@ impl Ops {
                         .await;
                 }
             }
-            IoReqEvent::DestroyVolume { app_name, params } => {
+            IoReqEvent::DestroyVolume {
+                seq_id,
+                app_name,
+                params,
+            } => {
                 if let Err(err) = volumes::destroy::destroy(self, &app_name, params).await {
                     let _ = self
                         .io_resp_tx
@@ -567,7 +632,18 @@ impl Ops {
                             message: err.to_string(),
                         })
                         .await;
-                } else if let Err(err) = volumes::list::list(self, &app_name).await {
+                } else {
+                    let _ = self
+                        .io_req_tx
+                        .send(IoReqEvent::ListVolumes {
+                            seq_id: seq_id + 1,
+                            app_name,
+                        })
+                        .await;
+                }
+            }
+            IoReqEvent::ListSecrets { seq_id, app_name } => {
+                if let Err(err) = secrets::list::list(self, seq_id, &app_name).await {
                     let _ = self
                         .io_resp_tx
                         .send(IoRespEvent::SetPopup {
@@ -577,18 +653,11 @@ impl Ops {
                         .await;
                 }
             }
-            IoReqEvent::ListSecrets { app_name } => {
-                if let Err(err) = secrets::list::list(self, &app_name).await {
-                    let _ = self
-                        .io_resp_tx
-                        .send(IoRespEvent::SetPopup {
-                            popup_type: PopupType::ErrorPopup,
-                            message: err.to_string(),
-                        })
-                        .await;
-                }
-            }
-            IoReqEvent::UnsetSecrets { app_name, keys } => {
+            IoReqEvent::UnsetSecrets {
+                seq_id,
+                app_name,
+                keys,
+            } => {
                 if let Err(err) = secrets::unset::unset(self, &app_name, keys).await {
                     let _ = self
                         .io_resp_tx
@@ -597,12 +666,12 @@ impl Ops {
                             message: err.to_string(),
                         })
                         .await;
-                } else if let Err(err) = secrets::list::list(self, &app_name).await {
+                } else {
                     let _ = self
-                        .io_resp_tx
-                        .send(IoRespEvent::SetPopup {
-                            popup_type: PopupType::ErrorPopup,
-                            message: err.to_string(),
+                        .io_req_tx
+                        .send(IoReqEvent::ListSecrets {
+                            seq_id: seq_id + 1,
+                            app_name,
                         })
                         .await;
                 }

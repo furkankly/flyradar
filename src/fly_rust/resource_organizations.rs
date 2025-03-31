@@ -7,7 +7,7 @@ use super::request_builder::{find_err, RequestBuilderGraphql};
 use crate::state::RdrResult;
 use crate::transformations::ListOrganization;
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct OrganizationFilter {
     admin: bool,
 }
@@ -17,13 +17,17 @@ impl OrganizationFilter {
         Self::default()
     }
 
+    pub fn admin_only() -> Self {
+        Self::new().admin(true)
+    }
+
     pub fn admin(mut self, value: bool) -> Self {
         self.admin = value;
         self
     }
 
-    pub fn admin_only() -> Self {
-        Self::new().admin(true)
+    pub fn is_admin_only(&self) -> bool {
+        self.admin
     }
 }
 
@@ -41,6 +45,7 @@ pub async fn get_all_organizations(
                 .map(|org| ListOrganization {
                     id: org.id.clone(),
                     name: org.name.clone(),
+                    viewer_role: org.viewer_role.clone(),
                     slug: org.slug.clone(),
                     type_: org.type_.clone(),
                 }),

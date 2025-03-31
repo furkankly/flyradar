@@ -1,10 +1,11 @@
-use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use color_eyre::eyre::OptionExt;
+use dashmap::{DashMap, DashSet};
 use focusable::FocusContainer;
+use strum::IntoEnumIterator;
 use tokio::sync::mpsc::{self, Sender};
 use tracing::{error, log};
 use tui_input::Input;
@@ -109,14 +110,24 @@ pub enum MultiSelectMode {
     On(MultiSelectModeReason),
 }
 
+#[derive(Eq, Hash, PartialEq, strum_macros::EnumIter)]
+pub enum ResourceType {
+    Organizations,
+    Apps,
+    Machines,
+    Volumes,
+    Secrets,
+}
+
 pub struct State {
     pub running: bool,
     pub debugger_state: tui_logger::TuiWidgetState,
     pub splash_shown: Arc<AtomicBool>,
     pub view_history: Vec<View>,
-    pub current_view_tx: Option<Sender<View>>,
+    current_view_tx: Option<Sender<View>>,
     io_tx: Option<Sender<IoReqEvent>>,
     prev_selected_id: Option<String>,
+    pub resource_list_seq_ids: Arc<DashMap<ResourceType, u64>>,
     pub resource_list: SelectableList,
     pub app_releases_list: Vec<Vec<String>>,
     pub app_services_list: Vec<Vec<String>>,
@@ -128,15 +139,22 @@ pub struct State {
 
 impl Default for State {
     fn default() -> Self {
+        let resource_list_seq_ids = DashMap::new();
+        for resource_type in ResourceType::iter() {
+            resource_list_seq_ids.insert(resource_type, 0);
+        }
         Self {
             running: true,
             debugger_state: tui_logger::TuiWidgetState::new()
                 .set_default_display_level(log::LevelFilter::Info),
             splash_shown: Arc::new(AtomicBool::new(false)),
-            view_history: vec![View::Organizations],
+            view_history: vec![View::Organizations {
+                filter: OrganizationFilter::default(),
+            }],
             current_view_tx: None,
             io_tx: None,
             prev_selected_id: None,
+            resource_list_seq_ids: Arc::new(resource_list_seq_ids),
             resource_list: SelectableList::default(),
             app_releases_list: vec![],
             app_services_list: vec![],
@@ -161,35 +179,51 @@ impl State {
         self.current_view_tx = Some(current_view_tx);
         self.io_tx = Some(io_req_tx);
         let io_tx_clone = self.io_tx.clone();
+        let seq_ids_clone = Arc::clone(&self.resource_list_seq_ids);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(5));
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
                         match current_view {
-                            View::Organizations => {
+                            View::Organizations { ref filter } => {
                                 if let Some(io_tx) = io_tx_clone.as_ref() {
-                                    let _ = io_tx.send(IoReqEvent::ListOrganizations{ filter: OrganizationFilter::default() }).await;
+                                    let _ = io_tx.send(IoReqEvent::ListOrganizations{
+                                        seq_id: *seq_ids_clone.get(&ResourceType::Organizations).unwrap() + 1,
+                                        filter: filter.clone()
+                                    }).await;
                                 }
                             }
-                            View::Apps{ref org_slug, ..} => {
+                            View::Apps { ref org_slug, .. } => {
                                 if let Some(io_tx) = io_tx_clone.as_ref() {
-                                    let _ = io_tx.send(IoReqEvent::ListApps{ org_slug: org_slug.clone() }).await;
+                                    let _ = io_tx.send(IoReqEvent::ListApps{
+                                        seq_id: *seq_ids_clone.get(&ResourceType::Apps).unwrap() + 1,
+                                        org_slug: org_slug.clone()
+                                    }).await;
                                 }
                             }
-                            View::Machines{ref app_name, ..} => {
+                            View::Machines { ref app_name, .. } => {
                                 if let Some(io_tx) = io_tx_clone.as_ref() {
-                                    let _ = io_tx.send(IoReqEvent::ListMachines{ app_name: app_name.clone() }).await;
+                                    let _ = io_tx.send(IoReqEvent::ListMachines{
+                                        seq_id: *seq_ids_clone.get(&ResourceType::Machines).unwrap() + 1,
+                                        app_name: app_name.clone()
+                                    }).await;
                                 }
                             }
-                            View::Volumes{ref app_name,..} => {
+                            View::Volumes { ref app_name, .. } => {
                                 if let Some(io_tx) = io_tx_clone.as_ref() {
-                                    let _ = io_tx.send(IoReqEvent::ListVolumes{ app_name: app_name.clone() }).await;
+                                    let _ = io_tx.send(IoReqEvent::ListVolumes{
+                                        seq_id: *seq_ids_clone.get(&ResourceType::Volumes).unwrap() + 1,
+                                        app_name: app_name.clone()
+                                    }).await;
                                 }
                             }
-                            View::Secrets{ref app_name,..} => {
+                            View::Secrets { ref app_name, .. } => {
                                 if let Some(io_tx) = io_tx_clone.as_ref() {
-                                    let _ = io_tx.send(IoReqEvent::ListSecrets{ app_name: app_name.clone() }).await;
+                                    let _ = io_tx.send(IoReqEvent::ListSecrets{
+                                        seq_id: *seq_ids_clone.get(&ResourceType::Secrets).unwrap() + 1,
+                                        app_name: app_name.clone()
+                                    }).await;
                                 }
                             }
                             _ => {}
@@ -218,34 +252,52 @@ impl State {
             };
         }
     }
-
+    pub fn get_seq_id(&self, resource_type: ResourceType) -> u64 {
+        *self.resource_list_seq_ids.get(&resource_type).unwrap()
+    }
+    pub fn set_seq_id(&self, resource_type: ResourceType, new_id: u64) {
+        self.resource_list_seq_ids.insert(resource_type, new_id);
+    }
     pub async fn handle_io_resp(&mut self, io_event: IoRespEvent) {
+        let current_view = self.get_current_view();
         match io_event {
-            IoRespEvent::Organizations { list }
-                if matches!(self.get_current_view(), View::Organizations) =>
+            IoRespEvent::Organizations { seq_id, list }
+                if matches!(current_view, View::Organizations { .. })
+                    && seq_id > self.get_seq_id(ResourceType::Organizations) =>
             {
+                self.set_seq_id(ResourceType::Organizations, seq_id);
                 self.resource_list
                     .set_items(list, self.prev_selected_id.take());
             }
-            IoRespEvent::Apps { list } if matches!(self.get_current_view(), View::Apps { .. }) => {
+            IoRespEvent::Apps { seq_id, list }
+                if matches!(current_view, View::Apps { .. })
+                    && seq_id > self.get_seq_id(ResourceType::Apps) =>
+            {
+                self.set_seq_id(ResourceType::Apps, seq_id);
                 self.resource_list
                     .set_items(list, self.prev_selected_id.take());
             }
-            IoRespEvent::Machines { list }
-                if matches!(self.get_current_view(), View::Machines { .. }) =>
+            IoRespEvent::Machines { seq_id, list }
+                if matches!(current_view, View::Machines { .. })
+                    && seq_id > self.get_seq_id(ResourceType::Machines) =>
             {
+                self.set_seq_id(ResourceType::Machines, seq_id);
                 self.resource_list
                     .set_items(list, self.prev_selected_id.take());
             }
-            IoRespEvent::Volumes { list }
-                if matches!(self.get_current_view(), View::Volumes { .. }) =>
+            IoRespEvent::Volumes { seq_id, list }
+                if matches!(current_view, View::Volumes { .. })
+                    && seq_id > self.get_seq_id(ResourceType::Volumes) =>
             {
+                self.set_seq_id(ResourceType::Volumes, seq_id);
                 self.resource_list
                     .set_items(list, self.prev_selected_id.take());
             }
-            IoRespEvent::Secrets { list }
-                if matches!(self.get_current_view(), View::Secrets { .. }) =>
+            IoRespEvent::Secrets { seq_id, list }
+                if matches!(current_view, View::Secrets { .. })
+                    && seq_id > self.get_seq_id(ResourceType::Secrets) =>
             {
+                self.set_seq_id(ResourceType::Secrets, seq_id);
                 self.resource_list
                     .set_items(list, self.prev_selected_id.take());
             }
@@ -267,6 +319,19 @@ impl State {
 
     pub fn get_current_view(&self) -> View {
         self.view_history.last().unwrap().clone()
+    }
+    pub fn get_current_org_filter(&self) -> OrganizationFilter {
+        self.view_history
+            .iter()
+            .rev()
+            .find_map(|view| {
+                if let View::Organizations { filter } = view {
+                    Some(filter.clone())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default()
     }
     pub fn get_current_org(&self) -> Option<(String, String)> {
         self.view_history.iter().rev().find_map(|view| {
@@ -307,30 +372,58 @@ impl State {
             .map(|view| view.to_scope())
             .collect()
     }
-    pub async fn navigate_back(&mut self) -> RdrResult<()> {
-        if self.view_history.len() > 1 {
-            let prev_view = self.view_history.pop();
-            if let Some(prev_view) = prev_view {
-                match prev_view {
-                    View::Apps { org_id, .. } => {
-                        self.prev_selected_id = Some(org_id);
-                    }
-                    View::AppLogs { app_id, .. }
-                    | View::Machines { app_id, .. }
-                    | View::Volumes { app_id, .. }
-                    | View::Secrets { app_id, .. } => {
-                        self.prev_selected_id = Some(app_id);
-                    }
-                    View::MachineLogs { opts, .. } => {
-                        let machine_id = opts.vm_id.clone().unwrap();
-                        self.prev_selected_id = Some(machine_id);
-                    }
-                    _ => {}
-                }
+    pub async fn toggle_org_admin_only(&mut self) -> RdrResult<()> {
+        let current_view = self.get_current_view();
+        let filter = if let View::Organizations { filter } = current_view {
+            filter
+        } else {
+            OrganizationFilter::default()
+        };
+        let new_view = if filter.is_admin_only() {
+            View::Organizations {
+                filter: OrganizationFilter::default(),
             }
-            self.set_current_view(&self.view_history.last().unwrap().clone())
-                .await?;
+        } else {
+            View::Organizations {
+                filter: OrganizationFilter::admin_only(),
+            }
+        };
+        let new_view_clone = new_view.clone();
+        self.set_current_view(&new_view, |view_history| {
+            view_history.pop();
+            view_history.push(new_view_clone);
+        })
+        .await?;
+
+        Ok(())
+    }
+    pub async fn navigate_back(&mut self) -> RdrResult<()> {
+        let history_length = self.view_history.len();
+        if history_length > 1 {
+            let current_view = self.get_current_view();
+            match current_view {
+                View::Apps { org_id, .. } => {
+                    self.prev_selected_id = Some(org_id);
+                }
+                View::AppLogs { app_id, .. }
+                | View::Machines { app_id, .. }
+                | View::Volumes { app_id, .. }
+                | View::Secrets { app_id, .. } => {
+                    self.prev_selected_id = Some(app_id);
+                }
+                View::MachineLogs { opts, .. } => {
+                    let machine_id = opts.vm_id.clone().unwrap();
+                    self.prev_selected_id = Some(machine_id);
+                }
+                _ => {}
+            };
+            let new_view = self.view_history[history_length - 2].clone();
+            self.set_current_view(&new_view, |view_history| {
+                view_history.pop();
+            })
+            .await?;
         }
+
         Ok(())
     }
     pub async fn navigate_to_apps(&mut self) -> RdrResult<()> {
@@ -339,8 +432,11 @@ impl State {
             org_id: org.id,
             org_slug: org.slug,
         };
-        self.set_current_view(&new_view).await?;
-        self.view_history.push(new_view);
+        let new_view_clone = new_view.clone();
+        self.set_current_view(&new_view, move |view_history| {
+            view_history.push(new_view_clone);
+        })
+        .await?;
         Ok(())
     }
     pub async fn navigate_to_machines(&mut self) -> RdrResult<()> {
@@ -349,8 +445,11 @@ impl State {
             app_id: app.id,
             app_name: app.name,
         };
-        self.set_current_view(&new_view).await?;
-        self.view_history.push(new_view);
+        let new_view_clone = new_view.clone();
+        self.set_current_view(&new_view, move |view_history| {
+            view_history.push(new_view_clone);
+        })
+        .await?;
         Ok(())
     }
     pub async fn navigate_to_app_logs(&mut self) -> RdrResult<()> {
@@ -365,8 +464,11 @@ impl State {
             app_id: app.id,
             opts: opts.clone(),
         };
-        self.set_current_view(&new_view).await?;
-        self.view_history.push(new_view);
+        let new_view_clone = new_view.clone();
+        self.set_current_view(&new_view, move |view_history| {
+            view_history.push(new_view_clone);
+        })
+        .await?;
         Ok(())
     }
     pub async fn navigate_to_machine_logs(&mut self) -> RdrResult<()> {
@@ -379,13 +481,19 @@ impl State {
             no_tail: false,
         };
         let new_view = View::MachineLogs { opts: opts.clone() };
-        self.set_current_view(&new_view).await?;
-        self.view_history.push(new_view);
+        let new_view_clone = new_view.clone();
+        self.set_current_view(&new_view, move |view_history| {
+            view_history.push(new_view_clone);
+        })
+        .await?;
         Ok(())
     }
     async fn navigate_via_command(&mut self, command: Command) -> RdrResult<()> {
         let can_navigate = match command {
-            Command::Organizations => Ok(View::Organizations),
+            Command::Organizations => {
+                let filter = self.get_current_org_filter();
+                Ok(View::Organizations { filter })
+            }
             Command::Apps => self
                 .get_current_org()
                 .map(|(org_id, org_slug)| View::Apps { org_id, org_slug })
@@ -410,26 +518,28 @@ impl State {
         // Check if navigation is allowed
         match can_navigate {
             Ok(new_view) => {
-                self.set_current_view(&new_view).await?;
-                match new_view {
-                    View::Organizations => {
-                        while !matches!(self.view_history.last(), Some(View::Organizations)) {
-                            self.view_history.pop();
+                let new_view_clone = new_view.clone();
+                self.set_current_view(&new_view, move |view_history| match new_view_clone {
+                    View::Organizations { .. } => {
+                        while !matches!(view_history.last(), Some(View::Organizations { .. })) {
+                            view_history.pop();
                         }
                     }
                     View::Apps { .. } => {
-                        while !matches!(self.view_history.last(), Some(View::Apps { .. })) {
-                            self.view_history.pop();
+                        while !matches!(view_history.last(), Some(View::Apps { .. })) {
+                            view_history.pop();
                         }
                     }
                     View::Machines { .. } | View::Volumes { .. } | View::Secrets { .. } => {
-                        while !matches!(self.view_history.last(), Some(View::Apps { .. })) {
-                            self.view_history.pop();
+                        while !matches!(view_history.last(), Some(View::Apps { .. })) {
+                            view_history.pop();
                         }
-                        self.view_history.push(new_view);
+                        view_history.push(new_view_clone);
                     }
                     _ => {}
-                }
+                })
+                .await?;
+
                 Ok(())
             }
             Err(err) => {
@@ -461,7 +571,11 @@ impl State {
             *input = Input::new(command.clone());
         }
     }
-    pub async fn set_current_view(&mut self, new_view: &View) -> RdrResult<()> {
+    pub async fn set_current_view(
+        &mut self,
+        new_view: &View,
+        update_history: impl FnOnce(&mut Vec<View>),
+    ) -> RdrResult<()> {
         match new_view {
             View::AppLogs { ref opts, .. } => {
                 self.dispatch(IoReqEvent::StreamLogs { opts: opts.clone() })
@@ -479,9 +593,9 @@ impl State {
                 self.logs_state =
                     TuiWidgetState::new().set_default_display_level(LevelFilter::Trace);
                 self.dispatch(IoReqEvent::StopLogs).await;
-                // Reset the resource list entering a new resource view
             }
         };
+        update_history(&mut self.view_history);
         if let Some(tx) = &self.current_view_tx {
             tx.send(new_view.clone()).await?;
         }
@@ -541,7 +655,7 @@ impl State {
     }
     pub fn exit_multi_select(&mut self) {
         self.multi_select_mode = MultiSelectMode::Off;
-        self.resource_list.multi_select_state = HashSet::new();
+        self.resource_list.multi_select_state = DashSet::new();
     }
     // Popup handling
     pub fn open_popup(&mut self, message: String, popup_type: PopupType, actions: Option<Form>) {
@@ -681,6 +795,7 @@ impl State {
             View::Apps { org_slug, .. } => {
                 let app: ListApp = self.get_selected_resource()?.into();
                 Ok(Some(IoReqEvent::DestroyApp {
+                    seq_id: self.get_seq_id(ResourceType::Apps),
                     app_name: app.name,
                     org_slug,
                 }))
@@ -696,12 +811,20 @@ impl State {
                     id: machine.id,
                     kill: force,
                 };
-                Ok(Some(IoReqEvent::DestroyMachine { app_name, params }))
+                Ok(Some(IoReqEvent::DestroyMachine {
+                    seq_id: self.get_seq_id(ResourceType::Machines),
+                    app_name,
+                    params,
+                }))
             }
             View::Volumes { app_name, .. } => {
                 let volume: ListVolume = self.get_selected_resource()?.into();
                 let params = RemoveVolumeInput { id: volume.id };
-                Ok(Some(IoReqEvent::DestroyVolume { app_name, params }))
+                Ok(Some(IoReqEvent::DestroyVolume {
+                    seq_id: self.get_seq_id(ResourceType::Volumes),
+                    app_name,
+                    params,
+                }))
             }
             View::Secrets { app_name, .. } => {
                 let keys = self
@@ -710,7 +833,11 @@ impl State {
                     .clone()
                     .into_iter()
                     .collect();
-                Ok(Some(IoReqEvent::UnsetSecrets { app_name, keys }))
+                Ok(Some(IoReqEvent::UnsetSecrets {
+                    seq_id: self.get_seq_id(ResourceType::Secrets),
+                    app_name,
+                    keys,
+                }))
             }
             _ => Ok(None),
         }
@@ -747,6 +874,7 @@ impl State {
                         .is_checked,
                 };
                 Ok(Some(IoReqEvent::RestartApp {
+                    seq_id: self.get_seq_id(ResourceType::Apps),
                     app_name: app.name,
                     params,
                     org_slug,
@@ -768,6 +896,7 @@ impl State {
                     ..Default::default()
                 };
                 Ok(Some(IoReqEvent::RestartMachines {
+                    seq_id: self.get_seq_id(ResourceType::Machines),
                     app_name,
                     machines,
                     params,
@@ -814,7 +943,11 @@ impl State {
                 .into_iter()
                 .collect();
             let (_, app_name) = self.get_current_app().ok_or_eyre("App not found.")?;
-            Ok(Some(IoReqEvent::StartMachines { app_name, machines }))
+            Ok(Some(IoReqEvent::StartMachines {
+                seq_id: self.get_seq_id(ResourceType::Machines),
+                app_name,
+                machines,
+            }))
         }
     }
     pub fn open_suspend_machines_popup(&mut self) {
@@ -832,7 +965,11 @@ impl State {
                 .into_iter()
                 .collect();
             let (_, app_name) = self.get_current_app().ok_or_eyre("App not found.")?;
-            Ok(Some(IoReqEvent::SuspendMachines { app_name, machines }))
+            Ok(Some(IoReqEvent::SuspendMachines {
+                seq_id: self.get_seq_id(ResourceType::Machines),
+                app_name,
+                machines,
+            }))
         }
     }
     pub fn open_stop_machines_popup(&mut self) {
@@ -854,6 +991,7 @@ impl State {
                 ..Default::default()
             };
             Ok(Some(IoReqEvent::StopMachines {
+                seq_id: self.get_seq_id(ResourceType::Machines),
                 app_name,
                 machines,
                 params,
@@ -871,7 +1009,11 @@ impl State {
             let machine: ListMachine = self.resource_list.selected().cloned().unwrap().into();
             let (_, app_name) = self.get_current_app().ok_or_eyre("App not found.")?;
             let params = KillMachineInput { id: machine.id };
-            Ok(Some(IoReqEvent::KillMachine { app_name, params }))
+            Ok(Some(IoReqEvent::KillMachine {
+                seq_id: self.get_seq_id(ResourceType::Machines),
+                app_name,
+                params,
+            }))
         }
     }
     pub fn open_cordon_machines_popup(&mut self) {
@@ -889,7 +1031,11 @@ impl State {
                 .into_iter()
                 .collect();
             let (_, app_name) = self.get_current_app().ok_or_eyre("App not found.")?;
-            Ok(Some(IoReqEvent::CordonMachines { app_name, machines }))
+            Ok(Some(IoReqEvent::CordonMachines {
+                seq_id: self.get_seq_id(ResourceType::Machines),
+                app_name,
+                machines,
+            }))
         }
     }
     pub fn open_uncordon_machines_popup(&mut self) {
@@ -907,7 +1053,11 @@ impl State {
                 .into_iter()
                 .collect();
             let (_, app_name) = self.get_current_app().ok_or_eyre("App not found.")?;
-            Ok(Some(IoReqEvent::UncordonMachines { app_name, machines }))
+            Ok(Some(IoReqEvent::UncordonMachines {
+                seq_id: self.get_seq_id(ResourceType::Machines),
+                app_name,
+                machines,
+            }))
         }
     }
 }

@@ -13,6 +13,7 @@ pub struct ListOrganization {
     pub id: String,
     pub slug: String,
     pub name: String,
+    pub viewer_role: String,
     pub type_: String,
 }
 #[derive(Debug)]
@@ -71,6 +72,7 @@ impl From<&ListOrganization> for Vec<String> {
         vec![
             org.id.clone(),
             org.name.clone(),
+            org.viewer_role.clone(),
             org.slug.clone(),
             org.type_.clone(),
         ]
@@ -82,8 +84,9 @@ impl From<Vec<String>> for ListOrganization {
         ListOrganization {
             id: vec[0].clone(),
             name: vec[1].clone(),
-            slug: vec[2].clone(),
-            type_: vec[3].clone(),
+            viewer_role: vec[2].clone(),
+            slug: vec[3].clone(),
+            type_: vec[4].clone(),
         }
     }
 }

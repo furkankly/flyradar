@@ -1,5 +1,4 @@
-use std::collections::HashSet;
-
+use dashmap::DashSet;
 use ratatui::widgets::TableState as State;
 
 /// List widget with TUI controlled states.
@@ -19,7 +18,7 @@ pub struct SelectableList {
     pub state: State,
     /// State that's used when the multi-select mode is on to act on multiple items for certain
     /// use-cases.
-    pub multi_select_state: HashSet<String>,
+    pub multi_select_state: DashSet<String>,
 }
 
 impl Default for SelectableList {
@@ -35,7 +34,7 @@ impl SelectableList {
         filtered_items: Vec<Vec<String>>,
         mut state: State,
         search_filter: String,
-        multi_select_state: HashSet<String>,
+        multi_select_state: DashSet<String>,
     ) -> SelectableList {
         state.select(Some(0));
         Self {
@@ -55,7 +54,7 @@ impl SelectableList {
             filtered_items,
             State::default(),
             String::default(),
-            HashSet::new(),
+            DashSet::new(),
         )
     }
 
@@ -65,7 +64,7 @@ impl SelectableList {
         self.search_filter = String::default();
         self.state = State::default();
         self.state.select(Some(0));
-        self.multi_select_state = HashSet::new();
+        self.multi_select_state = DashSet::new();
     }
 
     pub fn apply_search_filter(&mut self, new_search_filter: &str) {
