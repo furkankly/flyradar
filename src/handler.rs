@@ -1,5 +1,7 @@
+use color_eyre::eyre::eyre;
 use crossterm::event::{Event as CrostermEvent, KeyCode, KeyEvent, KeyModifiers};
 use tui_input::backend::crossterm::EventHandler;
+use tui_input::Input;
 
 use crate::ops::logs::dump_file_path;
 use crate::ops::IoReqEvent;
@@ -7,7 +9,7 @@ use crate::state::view::View;
 use crate::state::{
     InputState, MultiSelectMode, MultiSelectModeReason, PopupType, RdrResult, State,
 };
-use crate::transformations::ListApp;
+use crate::transformations::{ListApp, ListOrganization};
 use crate::widgets::log_viewer::TuiWidgetEvent;
 
 pub async fn handle_key_events(key_event: KeyEvent, state: &mut State) -> RdrResult<()> {
@@ -26,16 +28,52 @@ pub async fn handle_key_events(key_event: KeyEvent, state: &mut State) -> RdrRes
                             state.run_command().await?;
                             state.exit_input();
                         }
+                        InputState::Email { .. } => {
+                            if state.should_process_popup() {
+                                let action = {
+                                    let popup_type = &state.popup.as_ref().unwrap().popup_type;
+                                    match popup_type {
+                                        PopupType::CreateOrganizationInvitePopup => {
+                                            state.process_create_organization_invite_popup()
+                                        }
+                                        PopupType::DeleteOrganizationMembershipPopup => {
+                                            state.process_delete_organization_membership_popup()
+                                        }
+                                        _ => Err(eyre!("noop")),
+                                    }
+                                };
+                                if let Ok(action) = action {
+                                    state.popup = None;
+                                    state.input_state = InputState::Hidden;
+                                    if let Some(event) = action {
+                                        state.dispatch(event).await;
+                                    }
+                                }
+                            }
+                        }
                         _ => {}
                     },
-                    KeyCode::Esc => {
-                        if !state.resource_list.search_filter.is_empty() {
-                            state.resource_list.apply_search_filter("");
+                    KeyCode::Esc => match &mut state.input_state {
+                        InputState::Email { input } => *input = Input::default(),
+                        _ => {
+                            if !state.resource_list.search_filter.is_empty() {
+                                state.resource_list.apply_search_filter("");
+                            }
+                            state.exit_input();
                         }
-                        state.exit_input();
-                    }
+                    },
                     KeyCode::Tab if matches!(&state.input_state, InputState::Command { .. }) => {
                         state.complete_command();
+                    }
+                    KeyCode::BackTab | KeyCode::Left | KeyCode::Up => {
+                        if state.has_popup() {
+                            state.popup_focus_previous();
+                        }
+                    }
+                    KeyCode::Tab | KeyCode::Right | KeyCode::Down => {
+                        if state.has_popup() {
+                            state.popup_focus_next();
+                        }
                     }
                     _ => match &mut state.input_state {
                         InputState::Search { input } => {
@@ -45,6 +83,9 @@ pub async fn handle_key_events(key_event: KeyEvent, state: &mut State) -> RdrRes
                         InputState::Command { input, command: _ } => {
                             input.handle_event(&CrostermEvent::Key(key_event));
                             state.set_command();
+                        }
+                        InputState::Email { input } => {
+                            input.handle_event(&CrostermEvent::Key(key_event));
                         }
                         _ => {}
                     },
@@ -82,9 +123,11 @@ pub async fn handle_key_events(key_event: KeyEvent, state: &mut State) -> RdrRes
                                     }
                                     PopupType::InfoPopup
                                     | PopupType::ErrorPopup
+                                    | PopupType::ViewOrganizationMembersPopup
                                     | PopupType::ViewAppReleasesPopup
                                     | PopupType::ViewAppServicesPopup
                                     | PopupType::ViewCommandsPopup => Ok(None),
+                                    _ => Err(eyre!("noop")),
                                 }
                             };
                             if let Ok(action) = action {
@@ -187,16 +230,38 @@ pub async fn handle_key_events(key_event: KeyEvent, state: &mut State) -> RdrRes
                             (KeyCode::Char('d'), view)
                                 if key_event.modifiers == KeyModifiers::CONTROL =>
                             {
-                                if !matches!(
-                                    view,
-                                    View::Secrets { .. } | View::Organizations { .. }
-                                ) {
+                                let should_open_destroy_popup = match view {
+                                    View::Secrets { .. } => false,
+                                    View::Organizations { filter } => filter.is_admin_only(),
+                                    _ => true,
+                                };
+                                if should_open_destroy_popup {
                                     state.open_destroy_resource_popup()?;
                                 }
                             }
                             // Orgs
                             (KeyCode::Char('A'), View::Organizations { .. }) => {
                                 state.toggle_org_admin_only().await?;
+                            }
+                            (KeyCode::Char('i'), View::Organizations { filter }) => {
+                                if filter.is_admin_only() {
+                                    state.open_create_organization_invite_popup()?;
+                                }
+                            }
+                            (KeyCode::Char('r'), View::Organizations { filter }) => {
+                                if filter.is_admin_only() {
+                                    state.open_delete_organization_membership_popup()?;
+                                }
+                            }
+                            (KeyCode::Char('m'), View::Organizations { .. }) => {
+                                let org: ListOrganization = state.get_selected_resource()?.into();
+                                state.clear_organization_members_list();
+                                state
+                                    .dispatch(IoReqEvent::ViewOrganizationMembers {
+                                        org_slug: org.slug,
+                                    })
+                                    .await;
+                                state.open_view_organization_members_popup()?;
                             }
                             // Apps
                             (KeyCode::Char('o'), View::Apps { .. }) => {
@@ -210,7 +275,7 @@ pub async fn handle_key_events(key_event: KeyEvent, state: &mut State) -> RdrRes
                             {
                                 state.open_restart_resource_popup()?;
                             }
-                            (KeyCode::Char('v'), View::Apps { .. }) => {
+                            (KeyCode::Char('r'), View::Apps { .. }) => {
                                 let app: ListApp = state.get_selected_resource()?.into();
                                 state.clear_app_releases_list();
                                 state

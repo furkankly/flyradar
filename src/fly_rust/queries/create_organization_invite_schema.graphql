@@ -1,0 +1,26 @@
+type Mutation {
+  createOrganizationInvitation(
+    input: CreateOrganizationInvitationInput!
+  ): Payload
+}
+
+input CreateOrganizationInvitationInput {
+  organizationId: String!
+  email: String!
+}
+
+type Payload {
+  invitation: Invitation!
+}
+
+type Invitation {
+  id: String!
+  email: String!
+  createdAt: String!
+  redeemed: Boolean!
+  organization: Organization!
+}
+
+type Organization {
+  slug: String!
+}

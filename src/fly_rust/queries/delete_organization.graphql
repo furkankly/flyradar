@@ -1,0 +1,6 @@
+mutation DeleteOrganization($input: DeleteOrganizationInput!) {
+  deleteOrganization(input: $input) {
+    clientMutationId
+    deletedOrganizationId
+  }
+}

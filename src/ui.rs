@@ -13,7 +13,9 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::command::{Command, COMMANDS};
 use crate::state::view::View;
-use crate::state::{InputState, MultiSelectMode, MultiSelectModeReason, PopupType, State};
+use crate::state::{
+    InputState, MultiSelectMode, MultiSelectModeReason, PopupType, RdrPopup, State,
+};
 use crate::widgets::focusable_check_box::CheckBox;
 use crate::widgets::focusable_text::TextBox;
 use crate::widgets::log_viewer::{TuiLoggerLevelOutput, TuiLoggerSmartWidget, TuiLoggerWidget};
@@ -102,7 +104,7 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
             keymap = [
                 &[
                     ("<Enter>", "List apps"),
-                    ("<s>", "Show"),
+                    ("<m>", "View members"),
                     ("<Shift-a>", "Toggle admin-only"),
                     ("<↑/↓>", "Select"),
                     ("</>", "Search"),
@@ -122,7 +124,7 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
                     ("<Enter>", "List machines"),
                     ("<o>", "Open"),
                     ("<l>", "Logs"),
-                    ("<v>", "View releases"),
+                    ("<r>", "View releases"),
                     ("<s>", "View services"),
                     ("<Ctrl-r>", "Restart"),
                     ("<Ctrl-d>", "Destroy"),
@@ -294,6 +296,20 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
     frame.render_widget(banner_text, banner_layout[1]);
 }
 
+pub fn render_input(frame: &mut Frame, area: Rect, input: &Input, content: Line) {
+    let width = area.width.max(1) - 1; // keep 1 for cursor
+    let scroll = input.visual_scroll(width as usize);
+    let input_bar = Paragraph::new(content)
+        .scroll((0, scroll as u16))
+        .block(Block::default());
+
+    frame.set_cursor_position((
+        area.x + ((input.visual_cursor()).max(scroll) - scroll) as u16,
+        area.y,
+    ));
+    frame.render_widget(input_bar, area);
+}
+
 fn render_input_bar(state: &mut State, frame: &mut Frame, area: Rect) {
     let search_mode = matches!(state.input_state, InputState::Search { .. });
     let outer = Block::default()
@@ -306,42 +322,27 @@ fn render_input_bar(state: &mut State, frame: &mut Frame, area: Rect) {
             }
         }));
     let outer_area = outer.inner(area);
+    frame.render_widget(outer, area);
+
     let layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(4), Constraint::Min(0)])
         .split(outer_area);
-
-    frame.render_widget(outer, area);
     frame.render_widget(
         format!("{}> ", if search_mode { "🌞" } else { "🪁" }),
         layout[0],
     );
 
-    let mut render_input = |input: &Input, content: Line| {
-        let input_area = layout[1];
-        let width = input_area.width.max(1) - 1; // keep 1 for cursor
-        let scroll = input.visual_scroll(width as usize);
-        let input_bar = Paragraph::new(content)
-            .scroll((0, scroll as u16))
-            .block(Block::default());
-
-        frame.set_cursor_position((
-            input_area.x + ((input.visual_cursor()).max(scroll) - scroll) as u16,
-            input_area.y,
-        ));
-        frame.render_widget(input_bar, input_area);
-    };
-
     match &state.input_state {
         InputState::Command { input, command } => {
             let mut input_text = vec![input.value().into()];
             input_text.push(command.strip_prefix(input.value()).unwrap_or("").dim());
-            render_input(input, Line::from(input_text));
+            render_input(frame, layout[1], input, Line::from(input_text));
         }
         InputState::Search { input } => {
-            render_input(input, Line::from(input.value()));
+            render_input(frame, layout[1], input, Line::from(input.value()));
         }
-        InputState::Hidden { .. } => {}
+        _ => {}
     }
 }
 
@@ -570,7 +571,6 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
             );
         }
         View::AppLogs { .. } => {
-            // info!("Logs opts: {:#?}", opts);
             let logs = TuiLoggerSmartWidget::default()
                 .border_style(Style::new().fg({
                     // if !resource_list.search_filter.is_empty() {
@@ -669,6 +669,88 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
     }
 }
 
+fn render_view_list_popup(
+    frame: &mut Frame,
+    area: Rect,
+    popup: Block,
+    popup_state: &RdrPopup,
+    headers: &[&str],
+    data: &[Vec<String>],
+    percent_x: u16,
+    percent_y: u16,
+    with_title: bool,
+    custom_widths: Option<Vec<usize>>,
+    op_actions: Vec<&CheckBox>,
+    popup_actions: Vec<&TextBox>,
+) {
+    // Calculate constraints based on custom widths or uniform distribution
+    let constraints = if let Some(widths) = &custom_widths {
+        // Variable width columns
+        widths
+            .iter()
+            .map(|w| Constraint::Length(*w as u16))
+            .collect::<Vec<_>>()
+    } else {
+        // Uniform width columns
+        let max_cell_width =
+            ((area.width as usize) * percent_x as usize / 100).saturating_sub(4) / headers.len();
+        vec![Constraint::Length(max_cell_width as u16); headers.len()]
+    };
+
+    let rows = data.iter().map(|row| {
+        let cells = row.iter().enumerate().map(|(i, value)| {
+            let max_width = if let Some(widths) = &custom_widths {
+                widths[i]
+            } else {
+                ((area.width as usize) * percent_x as usize / 100).saturating_sub(4) / headers.len()
+            };
+
+            let content = if value.width() > max_width {
+                let truncated: String = value.chars().take(max_width.saturating_sub(3)).collect();
+                format!("{}…", truncated)
+            } else {
+                value.clone()
+            };
+            Cell::from(Line::from(content))
+        });
+        Row::new(cells)
+    });
+
+    let mut table = Table::new(rows, constraints)
+        .header(Row::new(
+            headers
+                .iter()
+                .map(|v| Cell::from((*v).fg(Palette::LIGHT_PINK).bold())),
+        ))
+        .column_spacing(0);
+
+    if with_title {
+        table = table.block(
+            Block::default()
+                .title(
+                    Line::from(Span::from(&popup_state.message))
+                        .bold()
+                        .fg(Palette::LIGHT_PURPLE),
+                )
+                .title_alignment(Alignment::Center)
+                .padding(Padding::vertical(1)),
+        );
+    }
+
+    render_popup(
+        frame,
+        area,
+        percent_x,
+        percent_y,
+        popup,
+        table,
+        None,
+        String::from(""),
+        op_actions,
+        popup_actions,
+    );
+}
+
 fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
     let current_view = state.get_current_view();
     let popup_state = &state.popup;
@@ -725,6 +807,30 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
                     "ℹ️ ".to_span(),
                     "Info".fg(Color::LightGreen).bold(),
                     " ℹ️".to_span(),
+                ]),
+                0,
+            ),
+            PopupType::CreateOrganizationInvitePopup => (
+                Line::from(vec![
+                    "📩 ".to_span(),
+                    "Organization Invite".fg(Palette::BLUE).bold(),
+                    " 📩".to_span(),
+                ]),
+                0,
+            ),
+            PopupType::DeleteOrganizationMembershipPopup => (
+                Line::from(vec![
+                    "❌ ".to_span(),
+                    "Remove Membership".fg(Palette::BLUE).bold(),
+                    " ❌".to_span(),
+                ]),
+                0,
+            ),
+            PopupType::ViewOrganizationMembersPopup => (
+                Line::from(vec![
+                    "👥 ".to_span(),
+                    "Organization Members".fg(Palette::BLUE).bold(),
+                    " 👥".to_span(),
                 ]),
                 0,
             ),
@@ -819,229 +925,166 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
             .filter_map(|action| action.as_any().downcast_ref::<TextBox>())
             .collect();
 
-        if matches!(popup_state.popup_type, PopupType::ViewAppReleasesPopup) {
-            let percent_x = 100;
-            let percent_y = 75;
-            let headers = [
-                "Version",
-                "Status",
-                "Description",
-                "User",
-                "Date",
-                "Docker Image",
-            ];
-            let mut max_cell_widths = vec![10, 10, 12, 12, 20];
-            // INFO: calc width based on percent_x, then - padding 2, border 2 then - sum of preceding
-            // cell widths
-            let last_col_max_cell_width = ((area.width as usize) * percent_x / 100_usize)
-                .saturating_sub(4)
-                .saturating_sub(max_cell_widths.iter().sum());
-            max_cell_widths.push(last_col_max_cell_width);
+        match popup_state.popup_type {
+            PopupType::ViewAppReleasesPopup => {
+                let headers = &[
+                    "Version",
+                    "Status",
+                    "Description",
+                    "User",
+                    "Date",
+                    "Docker Image",
+                ];
+                let mut max_cell_widths = vec![10, 10, 12, 12, 20];
 
-            let app_releases_list = &state.app_releases_list.clone();
-            let rows = app_releases_list.iter().map(|row| {
-                let cells = row.iter().enumerate().map(|(i, value)| {
-                    let max_cell_width = max_cell_widths[i];
-                    let content = if value.width() > max_cell_width {
-                        let truncated: String = value
-                            .chars()
-                            .take(max_cell_width.saturating_sub(3))
-                            .collect();
-                        format!("{}…", truncated)
-                    } else {
-                        value.clone()
-                    };
-                    Cell::from(Line::from(content))
-                });
-                Row::new(cells)
-            });
+                // Calculate last column width
+                let last_col_max_cell_width = ((area.width as usize) * 100 / 100_usize)
+                    .saturating_sub(4)
+                    .saturating_sub(max_cell_widths.iter().sum());
+                max_cell_widths.push(last_col_max_cell_width);
 
-            let content = Table::new(
-                rows,
-                max_cell_widths
+                render_view_list_popup(
+                    frame,
+                    area,
+                    popup,
+                    popup_state,
+                    headers,
+                    &state.app_releases_list,
+                    100,
+                    75,
+                    true,
+                    Some(max_cell_widths),
+                    op_actions,
+                    popup_actions,
+                );
+            }
+
+            PopupType::ViewAppServicesPopup => {
+                let headers = &[
+                    "Protocol",
+                    "Ports",
+                    "Handlers",
+                    "Force Https",
+                    "Process Group",
+                    "Regions",
+                    "Machines",
+                ];
+
+                render_view_list_popup(
+                    frame,
+                    area,
+                    popup,
+                    popup_state,
+                    headers,
+                    &state.app_services_list,
+                    100,
+                    75,
+                    true,
+                    None,
+                    op_actions,
+                    popup_actions,
+                );
+            }
+
+            PopupType::ViewCommandsPopup => {
+                let headers = &["Name", "Aliases"];
+                let commands_list = COMMANDS
                     .iter()
-                    .map(|w| Constraint::Length(*w as u16)),
-            )
-            .header(Row::new(
-                headers
-                    .to_vec()
-                    .iter()
-                    .map(|v| Cell::from((*v).fg(Palette::LIGHT_PINK).bold())),
-            ))
-            .column_spacing(0)
-            .block(
-                Block::default()
-                    .title(
-                        Line::from(Span::from(&popup_state.message))
-                            .bold()
-                            .fg(Palette::LIGHT_PURPLE),
-                    )
-                    .title_alignment(Alignment::Center)
-                    .padding(Padding::vertical(1)),
-            );
+                    .filter_map(|&cmd_str| {
+                        cmd_str
+                            .parse::<Command>()
+                            .ok()
+                            .map(|cmd| vec![cmd_str.to_string(), cmd.to_aliases().join(", ")])
+                    })
+                    .collect::<Vec<Vec<String>>>();
 
-            render_popup(
-                frame,
-                area,
-                percent_x as u16,
-                percent_y as u16,
-                popup,
-                content,
-                op_actions,
-                popup_actions,
-            );
-        } else if matches!(popup_state.popup_type, PopupType::ViewAppServicesPopup) {
-            let percent_x = 100;
-            let percent_y = 75;
-            let headers = [
-                "Protocol",
-                "Ports",
-                "Handlers",
-                "Force Https",
-                "Process Group",
-                "Regions",
-                "Machines",
-            ];
-            // INFO: calc width based on percent_x, then - padding 2, border 2
-            let max_cell_width =
-                ((area.width as usize) * percent_x / 100_usize).saturating_sub(4) / headers.len();
-            let app_services_list = &state.app_services_list.clone();
-            let rows = app_services_list.iter().map(|row| {
-                let cells = row.iter().map(|value| {
-                    let content = if value.width() > max_cell_width {
-                        let truncated: String = value
-                            .chars()
-                            .take(max_cell_width.saturating_sub(3))
-                            .collect();
-                        format!("{}…", truncated)
-                    } else {
-                        value.clone()
-                    };
-                    Cell::from(Line::from(content))
-                });
-                Row::new(cells)
-            });
+                render_view_list_popup(
+                    frame,
+                    area,
+                    popup,
+                    popup_state,
+                    headers,
+                    &commands_list,
+                    100,
+                    75,
+                    false,
+                    None,
+                    op_actions,
+                    popup_actions,
+                );
+            }
 
-            let content = Table::new(
-                rows,
-                &[Constraint::Length(max_cell_width as u16)].repeat(headers.len()),
-            )
-            .header(Row::new(
-                headers
-                    .to_vec()
-                    .iter()
-                    .map(|v| Cell::from((*v).fg(Palette::LIGHT_PINK).bold())),
-            ))
-            .column_spacing(0)
-            .block(
-                Block::default()
-                    .title(
-                        Line::from(Span::from(&popup_state.message))
-                            .bold()
-                            .fg(Palette::LIGHT_PURPLE),
-                    )
-                    .title_alignment(Alignment::Center)
-                    .padding(Padding::vertical(1)),
-            );
+            PopupType::ViewOrganizationMembersPopup => {
+                let headers = &["Name", "Email", "Role"];
 
-            render_popup(
-                frame,
-                area,
-                percent_x as u16,
-                percent_y as u16,
-                popup,
-                content,
-                op_actions,
-                popup_actions,
-            );
-        } else if matches!(popup_state.popup_type, PopupType::ViewCommandsPopup) {
-            let percent_x = 100;
-            let percent_y = 75;
-            let headers = ["Name", "Aliases"];
-            let commands_list = COMMANDS
-                .iter()
-                .filter_map(|&cmd_str| {
-                    cmd_str
-                        .parse::<Command>()
-                        .ok()
-                        .map(|cmd| vec![cmd_str.to_string(), cmd.to_aliases().join(", ")])
-                })
-                .collect::<Vec<Vec<String>>>();
-            // INFO: calc width based on percent_x, then - padding 2, border 2
-            let max_cell_width =
-                ((area.width as usize) * percent_x / 100_usize).saturating_sub(4) / headers.len();
+                render_view_list_popup(
+                    frame,
+                    area,
+                    popup,
+                    popup_state,
+                    headers,
+                    &state.organization_members_list,
+                    100,
+                    75,
+                    true,
+                    None,
+                    op_actions,
+                    popup_actions,
+                );
+            }
 
-            let rows = commands_list.iter().map(|row| {
-                let cells = row.iter().map(|value| {
-                    let content = if value.width() > max_cell_width {
-                        let truncated: String = value
-                            .chars()
-                            .take(max_cell_width.saturating_sub(3))
-                            .collect();
-                        format!("{}…", truncated)
-                    } else {
-                        value.clone()
-                    };
-                    Cell::from(Line::from(content))
-                });
-                Row::new(cells)
-            });
+            // Default case for other popup types
+            _ => {
+                let percent_x = 50;
+                let percent_y = 30;
+                //INFO: calc width based on percent_x and then - padding 2, border 2
+                let mut max_line_width = (area.width as usize) * percent_x / 100_usize;
+                max_line_width = max_line_width.saturating_sub(4);
 
-            let content = Table::new(
-                rows,
-                &[Constraint::Length(max_cell_width as u16)].repeat(headers.len()),
-            )
-            .header(Row::new(
-                headers
-                    .to_vec()
-                    .iter()
-                    .map(|v| Cell::from((*v).fg(Palette::LIGHT_PINK).bold())),
-            ))
-            .column_spacing(0);
+                let lines = [popup_state.message.to_string()];
+                let lines: Vec<Line> = lines
+                    .into_iter()
+                    .flat_map(|v| {
+                        if v.width() > max_line_width {
+                            textwrap::wrap(&v, textwrap::Options::new(max_line_width))
+                                .into_iter()
+                                .map(|v| Line::from(v.to_string()))
+                                .collect()
+                        } else {
+                            vec![Line::from(v)]
+                        }
+                    })
+                    .collect();
+                let content = Text::from(lines);
+                let mut render_input = None;
+                let mut input_label = String::from("");
 
-            render_popup(
-                frame,
-                area,
-                percent_x as u16,
-                percent_y as u16,
-                popup,
-                content,
-                op_actions,
-                popup_actions,
-            );
-        } else {
-            let percent_x = 50;
-            let percent_y = 30;
-            //INFO: calc width based on percent_x and then - padding 2, border 2
-            let mut max_line_width = (area.width as usize) * percent_x / 100_usize;
-            max_line_width = max_line_width.saturating_sub(4);
-
-            let lines = [popup_state.message.to_string()];
-            let lines: Vec<Line> = lines
-                .into_iter()
-                .flat_map(|v| {
-                    if v.width() > max_line_width {
-                        textwrap::wrap(&v, textwrap::Options::new(max_line_width))
-                            .into_iter()
-                            .map(|v| Line::from(v.to_string()))
-                            .collect()
-                    } else {
-                        vec![Line::from(v)]
+                if matches!(
+                    popup_state.popup_type,
+                    PopupType::CreateOrganizationInvitePopup
+                ) || matches!(
+                    popup_state.popup_type,
+                    PopupType::DeleteOrganizationMembershipPopup
+                ) {
+                    if let InputState::Email { input } = &state.input_state {
+                        render_input = Some(input);
+                        input_label = String::from("Email: ");
                     }
-                })
-                .collect();
-            let content = Text::from(lines);
+                }
 
-            render_popup(
-                frame,
-                area,
-                percent_x as u16,
-                percent_y as u16,
-                popup,
-                content,
-                op_actions,
-                popup_actions,
-            );
+                render_popup(
+                    frame,
+                    area,
+                    percent_x as u16,
+                    percent_y as u16,
+                    popup,
+                    content,
+                    render_input,
+                    input_label,
+                    op_actions,
+                    popup_actions,
+                );
+            }
         }
     }
 }
@@ -1055,7 +1098,10 @@ pub fn render(state: &mut State, frame: &mut Frame) {
         }
         let main_layout = Layout::horizontal(main_layout).split(frame.area());
         let mut layout = vec![Constraint::Length(8), Constraint::Min(0)];
-        if !matches!(state.input_state, InputState::Hidden { .. }) {
+        if matches!(
+            state.input_state,
+            InputState::Command { .. } | InputState::Search { .. }
+        ) {
             layout.insert(1, Constraint::Length(3));
         }
         let outer = Block::default().bg(Color::Black);
@@ -1072,7 +1118,10 @@ pub fn render(state: &mut State, frame: &mut Frame) {
         render_debugger(state, frame, main_layout[1]);
 
         render_header(state, frame, layout[0]);
-        if !matches!(state.input_state, InputState::Hidden { .. }) {
+        if matches!(
+            state.input_state,
+            InputState::Command { .. } | InputState::Search { .. }
+        ) {
             render_input_bar(state, frame, layout[1]);
         }
         render_current_view(state, frame, layout.last().unwrap().to_owned());

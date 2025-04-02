@@ -1,0 +1,13 @@
+mutation DeleteOrganizationMembership(
+  $input: DeleteOrganizationMembershipInput!
+) {
+  deleteOrganizationMembership(input: $input) {
+    organization {
+      slug
+    }
+    user {
+      name
+      email
+    }
+  }
+}

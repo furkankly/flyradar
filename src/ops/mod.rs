@@ -38,12 +38,28 @@ pub enum IoReqEvent {
         seq_id: u64,
         filter: OrganizationFilter,
     },
+    DestroyOrganization {
+        seq_id: u64,
+        filter: OrganizationFilter,
+        org_id: String,
+    },
+    CreateOrganizationInvite {
+        org_id: String,
+        email: String,
+    },
+    DeleteOrganizationMembership {
+        org_slug: String,
+        email: String,
+    },
     ListApps {
         seq_id: u64,
         org_slug: String,
     },
     OpenApp {
         app_name: String,
+    },
+    ViewOrganizationMembers {
+        org_slug: String,
     },
     ViewAppReleases {
         app_name: String,
@@ -157,6 +173,9 @@ pub enum IoRespEvent {
         seq_id: u64,
         list: Vec<Vec<String>>,
     },
+    OrganizationMembers {
+        list: Vec<Vec<String>>,
+    },
     AppReleases {
         list: Vec<Vec<String>>,
     },
@@ -244,6 +263,54 @@ impl Ops {
                         .await;
                 }
             }
+            IoReqEvent::DestroyOrganization {
+                seq_id,
+                filter,
+                org_id,
+            } => {
+                if let Err(err) = organizations::delete::delete(self, org_id).await {
+                    let _ = self
+                        .io_resp_tx
+                        .send(IoRespEvent::SetPopup {
+                            popup_type: PopupType::ErrorPopup,
+                            message: err.to_string(),
+                        })
+                        .await;
+                } else {
+                    let _ = self
+                        .io_req_tx
+                        .send(IoReqEvent::ListOrganizations {
+                            seq_id: seq_id + 1,
+                            filter,
+                        })
+                        .await;
+                }
+            }
+            IoReqEvent::CreateOrganizationInvite { org_id, email } => {
+                if let Err(err) = organizations::invite::invite(self, org_id, email).await {
+                    let _ = self
+                        .io_resp_tx
+                        .send(IoRespEvent::SetPopup {
+                            popup_type: PopupType::ErrorPopup,
+                            message: err.to_string(),
+                        })
+                        .await;
+                }
+            }
+            IoReqEvent::DeleteOrganizationMembership {
+                org_slug: org_id,
+                email,
+            } => {
+                if let Err(err) = organizations::remove::remove(self, org_id, email).await {
+                    let _ = self
+                        .io_resp_tx
+                        .send(IoRespEvent::SetPopup {
+                            popup_type: PopupType::ErrorPopup,
+                            message: err.to_string(),
+                        })
+                        .await;
+                }
+            }
             IoReqEvent::ListApps { seq_id, org_slug } => {
                 if let Err(err) = apps::list::list(self, seq_id, org_slug).await {
                     let _ = self
@@ -257,6 +324,17 @@ impl Ops {
             }
             IoReqEvent::OpenApp { app_name } => {
                 if let Err(err) = apps::open::open(self, app_name).await {
+                    let _ = self
+                        .io_resp_tx
+                        .send(IoRespEvent::SetPopup {
+                            popup_type: PopupType::ErrorPopup,
+                            message: err.to_string(),
+                        })
+                        .await;
+                }
+            }
+            IoReqEvent::ViewOrganizationMembers { org_slug } => {
+                if let Err(err) = organizations::members::members(self, org_slug).await {
                     let _ = self
                         .io_resp_tx
                         .send(IoRespEvent::SetPopup {

@@ -59,7 +59,7 @@ pub fn match_command(s: &str) -> &str {
 
     COMMANDS
         .iter()
-        .filter_map(|&cmd_str| {
+        .find_map(|&cmd_str| {
             // Try to parse each command
             cmd_str.parse::<Command>().ok().and_then(|cmd| {
                 // For each command, find the first alias that is a prefix match and longer
@@ -69,7 +69,6 @@ pub fn match_command(s: &str) -> &str {
                     .copied()
             })
         })
-        .next()
         .unwrap_or(s)
 }
 

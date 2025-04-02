@@ -1,0 +1,26 @@
+query GetDetailedOrganizationBySlug($slug: String!) {
+  organizationdetails: organization(slug: $slug) {
+    id
+    slug
+    name
+    type
+    viewerRole
+    internalNumericId
+    remoteBuilderImage
+    remoteBuilderApp {
+      name
+    }
+    members {
+      edges {
+        cursor
+        node {
+          id
+          name
+          email
+        }
+        joinedAt
+        role
+      }
+    }
+  }
+}

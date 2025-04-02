@@ -1,0 +1,13 @@
+mutation CreateOrganizationInvite($input: CreateOrganizationInvitationInput!) {
+  createOrganizationInvitation(input: $input) {
+    invitation {
+      id
+      email
+      createdAt
+      redeemed
+      organization {
+        slug
+      }
+    }
+  }
+}

@@ -201,7 +201,7 @@ impl Widget for TuiLoggerSmartWidget<'_> {
                 .map(|entry| entry.timestamp.timestamp_millis());
             if let Some(first) = first_timestamp {
                 if let Some(last) = last_timestamp {
-                    // info!("HERE first: {} last: {} dt: {}", first, last, last - first);
+                    // info!("first: {} last: {} dt: {}", first, last, last - first);
                     let dt = last - first;
                     let min_time_diff = 8000; // 8 seconds in ms
                     if dt >= min_time_diff {

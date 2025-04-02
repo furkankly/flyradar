@@ -37,6 +37,9 @@ pub enum PopupType {
     InfoPopup,
     DestroyResourcePopup,
     RestartResourcePopup,
+    CreateOrganizationInvitePopup,
+    DeleteOrganizationMembershipPopup,
+    ViewOrganizationMembersPopup,
     ViewAppReleasesPopup,
     ViewAppServicesPopup,
     ViewCommandsPopup,
@@ -65,6 +68,8 @@ impl RdrPopup {
                 TextBox::new("OK").boxed(),
             ]),
             PopupType::DestroyResourcePopup
+            | PopupType::CreateOrganizationInvitePopup
+            | PopupType::DeleteOrganizationMembershipPopup
             | PopupType::StartMachinesPopup
             | PopupType::SuspendMachinesPopup
             | PopupType::StopMachinesPopup
@@ -75,6 +80,7 @@ impl RdrPopup {
             }
             PopupType::InfoPopup
             | PopupType::ErrorPopup
+            | PopupType::ViewOrganizationMembersPopup
             | PopupType::ViewAppReleasesPopup
             | PopupType::ViewAppServicesPopup
             | PopupType::ViewCommandsPopup => Form::from_iter([TextBox::new("Dismiss").boxed()]),
@@ -90,10 +96,12 @@ impl RdrPopup {
     }
 }
 
+#[derive(Debug)]
 pub enum InputState {
     Hidden,
     Command { input: Input, command: String },
     Search { input: Input },
+    Email { input: Input },
 }
 
 pub enum MultiSelectModeReason {
@@ -129,6 +137,7 @@ pub struct State {
     prev_selected_id: Option<String>,
     pub resource_list_seq_ids: Arc<DashMap<ResourceType, u64>>,
     pub resource_list: SelectableList,
+    pub organization_members_list: Vec<Vec<String>>,
     pub app_releases_list: Vec<Vec<String>>,
     pub app_services_list: Vec<Vec<String>>,
     pub logs_state: TuiWidgetState,
@@ -156,6 +165,7 @@ impl Default for State {
             prev_selected_id: None,
             resource_list_seq_ids: Arc::new(resource_list_seq_ids),
             resource_list: SelectableList::default(),
+            organization_members_list: vec![],
             app_releases_list: vec![],
             app_services_list: vec![],
             logs_state: TuiWidgetState::new().set_default_display_level(LevelFilter::Trace),
@@ -300,6 +310,9 @@ impl State {
                 self.set_seq_id(ResourceType::Secrets, seq_id);
                 self.resource_list
                     .set_items(list, self.prev_selected_id.take());
+            }
+            IoRespEvent::OrganizationMembers { list } => {
+                self.organization_members_list = list;
             }
             IoRespEvent::AppReleases { list } => {
                 self.app_releases_list = list;
@@ -738,6 +751,13 @@ impl State {
         let selected_resource = self.get_selected_resource()?;
         let current_view = self.get_current_view();
         match current_view {
+            View::Organizations { .. } => {
+                let org: ListOrganization = selected_resource.into();
+                message = format!(
+                    "Deleting an organization is not reversible. {} organization: {}?",
+                    message, org.slug
+                );
+            }
             View::Apps { .. } => {
                 let app: ListApp = selected_resource.into();
                 message = format!("{} app: {}?", message, app.name);
@@ -792,6 +812,14 @@ impl State {
         }
         let current_view = self.get_current_view();
         match current_view {
+            View::Organizations { filter } => {
+                let org: ListOrganization = self.get_selected_resource()?.into();
+                Ok(Some(IoReqEvent::DestroyOrganization {
+                    seq_id: self.get_seq_id(ResourceType::Organizations),
+                    filter,
+                    org_id: org.id,
+                }))
+            }
             View::Apps { org_slug, .. } => {
                 let app: ListApp = self.get_selected_resource()?.into();
                 Ok(Some(IoReqEvent::DestroyApp {
@@ -904,6 +932,68 @@ impl State {
             }
             _ => Ok(None),
         }
+    }
+    pub fn open_create_organization_invite_popup(&mut self) -> RdrResult<()> {
+        let org: ListOrganization = self.get_selected_resource()?.into();
+        let message = format!("Invite a user, by email, to join organization {}. The invitation will be sent, and the user will be pending until they respond.", org.name);
+        self.input_state = InputState::Email {
+            input: Input::default(),
+        };
+        self.open_popup(message, PopupType::CreateOrganizationInvitePopup, None);
+        Ok(())
+    }
+    pub fn process_create_organization_invite_popup(&self) -> RdrResult<Option<IoReqEvent>> {
+        if !self.should_take_action(&self.popup.as_ref().unwrap().actions) {
+            Ok(None)
+        } else {
+            let org: ListOrganization = self.get_selected_resource()?.into();
+            let email = if let InputState::Email { input } = &self.input_state {
+                String::from(input.value())
+            } else {
+                String::from("")
+            };
+            Ok(Some(IoReqEvent::CreateOrganizationInvite {
+                org_id: org.id,
+                email,
+            }))
+        }
+    }
+    pub fn open_delete_organization_membership_popup(&mut self) -> RdrResult<()> {
+        let org: ListOrganization = self.get_selected_resource()?.into();
+        let message = format!(
+            "Remove a user from this organization {}. User must have accepted a previous invitation to join.",
+            org.name
+        );
+        self.input_state = InputState::Email {
+            input: Input::default(),
+        };
+        self.open_popup(message, PopupType::DeleteOrganizationMembershipPopup, None);
+        Ok(())
+    }
+    pub fn process_delete_organization_membership_popup(&self) -> RdrResult<Option<IoReqEvent>> {
+        if !self.should_take_action(&self.popup.as_ref().unwrap().actions) {
+            Ok(None)
+        } else {
+            let org: ListOrganization = self.get_selected_resource()?.into();
+            let email = if let InputState::Email { input } = &self.input_state {
+                String::from(input.value())
+            } else {
+                String::from("")
+            };
+            Ok(Some(IoReqEvent::DeleteOrganizationMembership {
+                org_slug: org.slug,
+                email,
+            }))
+        }
+    }
+    pub fn open_view_organization_members_popup(&mut self) -> RdrResult<()> {
+        let org: ListOrganization = self.get_selected_resource()?.into();
+        let message = format!("Members of {}", org.slug);
+        self.open_popup(message, PopupType::ViewOrganizationMembersPopup, None);
+        Ok(())
+    }
+    pub fn clear_organization_members_list(&mut self) {
+        self.organization_members_list = vec![];
     }
     pub fn open_view_app_releases_popup(&mut self) -> RdrResult<()> {
         let app: ListApp = self.get_selected_resource()?.into();
