@@ -1,10 +1,11 @@
 use std::io;
 
-use clap::Parser;
+use clap::{crate_authors, Command};
 use config::{FullConfig, TokenConfig};
 use ops::{IoReqEvent, IoRespEvent, Ops};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
+use shadow_rs::shadow;
 use tracing::error;
 #[allow(unused_imports)]
 use tracing_subscriber::prelude::*;
@@ -13,6 +14,8 @@ use crate::event::{Event, EventHandler};
 use crate::handler::handle_key_events;
 use crate::state::{RdrResult, State};
 use crate::tui::Tui;
+
+shadow!(build);
 
 pub mod agent;
 pub mod auth;
@@ -41,27 +44,15 @@ fn init_tracing() -> RdrResult<()> {
     Ok(())
 }
 
-pub fn version() -> String {
-    let commit_hash = option_env!("FLYRADAR_GIT_INFO").unwrap_or(env!("CARGO_PKG_VERSION"));
-    let authors = clap::crate_authors!();
-
-    format!(
-        "\
-{commit_hash}
-
-Authors: {authors}"
-    )
-}
-
-#[derive(Parser, Debug)]
-#[command(version = version(), about = "Manage your Fly.io resources in style")]
-struct Args {}
-
 #[tokio::main]
 async fn main() -> RdrResult<()> {
     #[cfg(debug_assertions)]
     init_tracing()?;
-    Args::parse();
+    Command::new(build::PROJECT_NAME)
+        .about("Manage your Fly.io resources in style")
+        .author(crate_authors!("\n"))
+        .long_version(build::CLAP_LONG_VERSION)
+        .get_matches();
     color_eyre::install()?;
 
     if let Ok(access_token) = auth::read_access_token().await {
