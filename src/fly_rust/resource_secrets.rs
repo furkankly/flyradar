@@ -38,11 +38,17 @@ pub async fn get_app_secrets(
 ) -> RdrResult<Option<get_app_secrets::ResponseData>> {
     let variables = get_app_secrets::Variables { app_name };
     let request_body = GetAppSecrets::build_query(variables);
-    let response = request_builder_graphql
-        .query()
-        .json(&request_body)
-        .send()
-        .await?;
+
+    let response = (|| async {
+        request_builder_graphql
+            .query()
+            .json(&request_body)
+            .send()
+            .await
+    })
+    .retry(ConstantBuilder::default())
+    .when(|e| find_err(e, "connection closed before message completed"))
+    .await?;
 
     let bytes = response.bytes().await?;
     let response_body: Response<get_app_secrets::ResponseData> =
@@ -81,17 +87,11 @@ pub async fn unset_secrets(
         },
     };
     let request_body = UnsetSecrets::build_query(variables);
-    let response = (|| async {
-        request_builder_graphql
-            .query()
-            .json(&request_body)
-            .send()
-            .await
-    })
-    .retry(ConstantBuilder::default())
-    .when(|e| find_err(e, "connection closed before message completed"))
-    .await?;
-
+    let response = request_builder_graphql
+        .query()
+        .json(&request_body)
+        .send()
+        .await?;
     let bytes = response.bytes().await?;
     let response_body: Response<unset_secrets::ResponseData> =
         serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_slice(&bytes))?;

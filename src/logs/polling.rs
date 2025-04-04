@@ -4,9 +4,8 @@ use backon::{ExponentialBuilder, Retryable};
 use color_eyre::eyre;
 use futures::stream::BoxStream;
 use reqwest::StatusCode;
-use tokio::task::{
-    JoinHandle, {self},
-};
+use tokio::sync::mpsc;
+use tokio::task::{self, JoinHandle};
 use tracing::info;
 
 use super::entry::LogEntry;
@@ -25,7 +24,7 @@ impl LogStream for PollingStream {
         &self,
         opts: &LogOptions,
     ) -> (BoxStream<'static, RdrResult<LogEntry>>, JoinHandle<()>) {
-        let (tx, rx) = tokio::sync::mpsc::channel(100);
+        let (tx, rx) = mpsc::channel(100);
         let request_builder_fly_clone = self.request_builder_fly.clone();
         let opts_clone = opts.clone();
         let poll_handle = task::spawn(async move {

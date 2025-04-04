@@ -1,0 +1,36 @@
+type Query {
+  organization(slug: String!): Payload!
+}
+
+type Payload {
+  id: String!
+  slug: String!
+  name: String!
+  type: String!
+  viewerRole: String!
+  internalNumericId: String!
+  remoteBuilderImage: String!
+  remoteBuilderApp: RemoteBuilderApp
+  members: Members!
+}
+
+type RemoteBuilderApp {
+  name: String!
+}
+
+type Members {
+  edges: [Edge!]!
+}
+
+type Edge {
+  cursor: String!
+  node: Node!
+  joinedAt: String!
+  role: String!
+}
+
+type Node {
+  id: String!
+  name: String!
+  email: String!
+}

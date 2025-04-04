@@ -1,0 +1,14 @@
+query GetOrganizations($admin: Boolean!) {
+  organizations(admin: $admin) {
+    nodes {
+      id
+      slug
+      name
+      type
+      paidPlan
+      billable
+      viewerRole
+      internalNumericId
+    }
+  }
+}

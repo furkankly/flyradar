@@ -193,7 +193,6 @@ impl Client {
         }
     }
 
-    //TODO: Support pre-2017 Windows versions using Named Pipes as flyctl does.
     async fn dial_context(&self) -> Result<Arc<Mutex<NativeIpcStream>>, io::Error> {
         info!("running dial context.");
         let stream = connect_ipc(&self.address).await.map_err(|e| {

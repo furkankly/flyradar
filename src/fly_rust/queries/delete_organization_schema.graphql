@@ -1,0 +1,12 @@
+type Mutation {
+  deleteOrganization(input: DeleteOrganizationInput!): Payload!
+}
+
+input DeleteOrganizationInput {
+  organizationId: String!
+}
+
+type Payload {
+  clientMutationId: String
+  deletedOrganizationId: String!
+}

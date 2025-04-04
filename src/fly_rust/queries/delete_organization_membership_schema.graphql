@@ -1,0 +1,24 @@
+type Mutation {
+  deleteOrganizationMembership(
+    input: DeleteOrganizationMembershipInput!
+  ): Payload
+}
+
+input DeleteOrganizationMembershipInput {
+  organizationId: String!
+  userId: String!
+}
+
+type Payload {
+  organization: Organization!
+  user: User!
+}
+
+type Organization {
+  slug: String!
+}
+
+type User {
+  name: String!
+  email: String!
+}

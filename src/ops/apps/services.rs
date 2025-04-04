@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use color_eyre::eyre::OptionExt;
 
 use crate::ops::lease::list_active_machines;
-use crate::ops::Ops;
+use crate::ops::{IoRespEvent, Ops};
 use crate::state::RdrResult;
 
 pub async fn services(ops: &Ops, app_name: String) -> RdrResult<()> {
@@ -62,8 +62,7 @@ pub async fn services(ops: &Ops, app_name: String) -> RdrResult<()> {
         *service_to_machines.entry(key).or_insert(0) += 1;
     }
 
-    let mut shared_state_guard = ops.shared_state.lock().unwrap();
-    shared_state_guard.app_services_list = services
+    let app_services_list = services
         .iter()
         .map(|service| {
             let components: Vec<&str> = service.split('-').collect();
@@ -95,6 +94,12 @@ pub async fn services(ops: &Ops, app_name: String) -> RdrResult<()> {
             ]
         })
         .collect();
+    ops.io_resp_tx
+        .send(IoRespEvent::AppServices {
+            list: app_services_list,
+        })
+        .await?;
+
     Ok(())
 }
 

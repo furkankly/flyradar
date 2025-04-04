@@ -1,5 +1,6 @@
 use std::sync::atomic::Ordering;
 
+use itertools::Itertools;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::symbols::border;
@@ -10,8 +11,10 @@ use tui_big_text::{BigText, PixelSize};
 use tui_input::Input;
 use unicode_width::UnicodeWidthStr;
 
+use crate::command::{Command, COMMANDS};
+use crate::state::view::View;
 use crate::state::{
-    CurrentScope, CurrentView, InputState, MultiSelectMode, MultiSelectModeReason, PopupType, State,
+    InputState, MultiSelectMode, MultiSelectModeReason, PopupType, RdrPopup, State,
 };
 use crate::widgets::focusable_check_box::CheckBox;
 use crate::widgets::focusable_text::TextBox;
@@ -89,31 +92,54 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
         .constraints(vec![Constraint::Min(0), Constraint::Length(24)])
         .split(area);
 
-    let mut keymap = vec![(":cmd", "Command mode")];
+    let mut keymap = vec![
+        ("<Ctrl-a>", "View commands"),
+        (":cmd", "Command mode"),
+        ("<Esc>", "Back/Cancel"),
+    ];
 
-    match state.current_view {
-        CurrentView::ResourceList(CurrentScope::Apps) => {
+    let current_view = state.get_current_view();
+    match current_view {
+        View::Organizations { ref filter } => {
             keymap = [
                 &[
+                    ("<Enter>", "List apps"),
+                    ("<m>", "View members"),
+                    ("<Shift-a>", "Toggle admin-only"),
                     ("<↑/↓>", "Select"),
-                    ("<Enter>", "List machines"),
-                    ("<o>", "Open"),
-                    ("<l>", "Logs"),
-                    ("<v>", "View releases"),
-                    ("<s>", "View services"),
-                    ("<Ctrl-r>", "Restart"),
-                    ("<Ctrl-d>", "Destroy"),
                     ("</>", "Search"),
                 ],
                 &keymap[..],
             ]
             .concat();
+            if filter.is_admin_only() {
+                keymap.push(("<Ctrl-d>", "Delete"));
+                keymap.push(("<i>", "Invite"));
+                keymap.push(("<r>", "Remove"));
+            }
         }
-        CurrentView::ResourceList(CurrentScope::Machines) => {
+        View::Apps { .. } => {
             keymap = [
                 &[
-                    ("<↑/↓>", "Select"),
+                    ("<Enter>", "List machines"),
+                    ("<o>", "Open"),
                     ("<l>", "Logs"),
+                    ("<r>", "View releases"),
+                    ("<s>", "View services"),
+                    ("<Ctrl-r>", "Restart"),
+                    ("<Ctrl-d>", "Destroy"),
+                    ("<↑/↓>", "Select"),
+                    ("</>", "Search"),
+                    ("<Space>", "Toggle checkbox"),
+                ],
+                &keymap[..],
+            ]
+            .concat();
+        }
+        View::Machines { .. } => {
+            keymap = [
+                &[
+                    ("<Enter>, <l>", "Logs"),
                     ("<r>", "Restart"),
                     ("<s>", "Start"),
                     ("<u>", "Suspend"),
@@ -122,19 +148,39 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
                     ("<Ctrl-d>", "Destroy"),
                     ("<c>", "Cordon"),
                     ("<Shift-c>", "Uncordon"),
+                    ("<↑/↓>", "Select"),
                     ("</>", "Search"),
+                    ("<Space>", "Toggle checkbox"),
                 ],
                 &keymap[..],
             ]
             .concat();
         }
-        CurrentView::ResourceList(CurrentScope::Volumes) => {
-            keymap = [&[("<Ctrl-d>", "Destroy"), ("</>", "Search")], &keymap[..]].concat();
+        View::Volumes { .. } => {
+            keymap = [
+                &[
+                    ("<Ctrl-d>", "Destroy"),
+                    ("<↑/↓>", "Select"),
+                    ("</>", "Search"),
+                    ("<Space>", "Toggle checkbox"),
+                ],
+                &keymap[..],
+            ]
+            .concat();
         }
-        CurrentView::ResourceList(CurrentScope::Secrets) => {
-            keymap = [&[("<u>", "Stage Unset"), ("</>", "Search")], &keymap[..]].concat();
+        View::Secrets { .. } => {
+            keymap = [
+                &[
+                    ("<u>", "Stage Unset"),
+                    ("<↑/↓>", "Select"),
+                    ("</>", "Search"),
+                    ("<Space>", "Toggle checkbox"),
+                ],
+                &keymap[..],
+            ]
+            .concat();
         }
-        CurrentView::AppLogs(_) => {
+        View::AppLogs { .. } => {
             keymap = [
                 &[
                     ("<t>", "Toggle region selector"),
@@ -144,23 +190,27 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
                     ("<+/->", "Change filter level"),
                     ("<Ctrl-s>", "Dump logs"),
                     ("<PageUp/Down>", "Scroll"),
-                    ("<Esc>", "Reset scroll"),
+                    ("<r>", "Reset scroll"),
                 ],
                 &keymap[..],
             ]
             .concat();
         }
-        CurrentView::MachineLogs(_) => {
+        View::MachineLogs { .. } => {
             keymap = [
                 &[
                     ("<Ctrl-s>", "Dump logs"),
                     ("<PageUp/Down>", "Scroll"),
-                    ("<Esc>", "Reset scroll"),
+                    ("<r>", "Reset scroll"),
                 ],
                 &keymap[..],
             ]
             .concat();
         }
+    }
+
+    if matches!(state.multi_select_mode, MultiSelectMode::On(..)) {
+        keymap = [&keymap[..], &[("<Enter>", "Apply")]].concat();
     }
 
     let max_item_width = keymap
@@ -192,9 +242,26 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
                 .iter()
                 .skip(row_length * col_idx)
                 .zip(rows.iter())
-                .for_each(|(&(key, action), row)| {
+                .enumerate() // Add enumerate to track position
+                .for_each(|(i, (&(key, action), row))| {
+                    let multi_select_action = i + row_length * col_idx == (keymap.len() - 1);
+                    let color = if matches!(state.multi_select_mode, MultiSelectMode::On(..))
+                        && multi_select_action
+                    {
+                        Palette::TEAL
+                    } else if let View::Organizations { ref filter } = &current_view {
+                        let admin_only_actions = i + row_length * col_idx >= (keymap.len() - 3);
+                        if filter.is_admin_only() && admin_only_actions {
+                            Palette::BLUE
+                        } else {
+                            Palette::LIGHT_PURPLE
+                        }
+                    } else {
+                        Palette::LIGHT_PURPLE
+                    };
+
                     let line = Line::from(vec![
-                        Span::styled(key, Style::default().fg(Palette::LIGHT_PURPLE)),
+                        Span::styled(key, Style::default().fg(color)),
                         Span::raw(": "),
                         Span::raw(String::from(action) + " "),
                     ]);
@@ -229,6 +296,20 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
     frame.render_widget(banner_text, banner_layout[1]);
 }
 
+pub fn render_input(frame: &mut Frame, area: Rect, input: &Input, content: Line) {
+    let width = area.width.max(1) - 1; // keep 1 for cursor
+    let scroll = input.visual_scroll(width as usize);
+    let input_bar = Paragraph::new(content)
+        .scroll((0, scroll as u16))
+        .block(Block::default());
+
+    frame.set_cursor_position((
+        area.x + ((input.visual_cursor()).max(scroll) - scroll) as u16,
+        area.y,
+    ));
+    frame.render_widget(input_bar, area);
+}
+
 fn render_input_bar(state: &mut State, frame: &mut Frame, area: Rect) {
     let search_mode = matches!(state.input_state, InputState::Search { .. });
     let outer = Block::default()
@@ -241,42 +322,27 @@ fn render_input_bar(state: &mut State, frame: &mut Frame, area: Rect) {
             }
         }));
     let outer_area = outer.inner(area);
+    frame.render_widget(outer, area);
+
     let layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(4), Constraint::Min(0)])
         .split(outer_area);
-
-    frame.render_widget(outer, area);
     frame.render_widget(
         format!("{}> ", if search_mode { "🌞" } else { "🪁" }),
         layout[0],
     );
 
-    let mut render_input = |input: &Input, content: Line| {
-        let input_area = layout[1];
-        let width = input_area.width.max(1) - 1; // keep 1 for cursor
-        let scroll = input.visual_scroll(width as usize);
-        let input_bar = Paragraph::new(content)
-            .scroll((0, scroll as u16))
-            .block(Block::default());
-
-        frame.set_cursor_position((
-            input_area.x + ((input.visual_cursor()).max(scroll) - scroll) as u16,
-            input_area.y,
-        ));
-        frame.render_widget(input_bar, input_area);
-    };
-
     match &state.input_state {
         InputState::Command { input, command } => {
             let mut input_text = vec![input.value().into()];
             input_text.push(command.strip_prefix(input.value()).unwrap_or("").dim());
-            render_input(input, Line::from(input_text));
+            render_input(frame, layout[1], input, Line::from(input_text));
         }
         InputState::Search { input } => {
-            render_input(input, Line::from(input.value()));
+            render_input(frame, layout[1], input, Line::from(input.value()));
         }
-        InputState::Hidden { .. } => {}
+        _ => {}
     }
 }
 
@@ -294,44 +360,65 @@ fn highlight_search_result<'a>(line: Line<'a>, input: &'a str) -> Vec<Span<'a>> 
 }
 
 fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
-    let mut layout = vec![Constraint::Min(0)];
-    let is_multi_select_shown = !matches!(state.multi_select_mode, MultiSelectMode::Off);
+    let mut layout = vec![Constraint::Min(0), Constraint::Length(2)];
+
+    let current_view = state.get_current_view();
+    let is_multi_select_shown = matches!(state.multi_select_mode, MultiSelectMode::On(..))
+        && matches!(
+            current_view,
+            View::Organizations { .. }
+                | View::Apps { .. }
+                | View::Machines { .. }
+                | View::Volumes { .. }
+                | View::Secrets { .. }
+        );
     if is_multi_select_shown {
         layout.insert(0, Constraint::Length(2));
     }
-    let render_current_app = matches!(
-        &state.current_view,
-        CurrentView::ResourceList(CurrentScope::Machines)
-            | CurrentView::ResourceList(CurrentScope::Volumes)
-            | CurrentView::ResourceList(CurrentScope::Secrets)
-            | CurrentView::MachineLogs(_)
-    );
-    if render_current_app {
-        layout.push(Constraint::Length(2));
-    }
+
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(layout)
         .split(area);
 
-    if render_current_app {
-        if let Some(current_app) = state.get_current_app_name() {
-            let current_app_text = format!(" {current_app} ");
-            let current_app_text = Paragraph::new(
-                current_app_text
-                    .to_text()
+    let breadcrumbs = state.get_breadcrumbs();
+    let breadcrumbs_layout = breadcrumbs
+        .iter()
+        .map(|text| Constraint::Length((text.width() + 3) as u16))
+        .collect::<Vec<Constraint>>();
+
+    let breadcrumbs_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(breadcrumbs_layout)
+        .split(layout[layout.len() - 1]);
+
+    breadcrumbs
+        .iter()
+        .zip(breadcrumbs_layout.iter())
+        .for_each(|(breadcrumb, layout_chunk)| {
+            let text = format!(" {} ", breadcrumb);
+            let breadcrumb_widget = Paragraph::new(
+                text.to_text()
                     .bold()
-                    .bg(Palette::LIGHT_PURPLE)
+                    .bg(if current_view.to_breadcrumb().eq(breadcrumb) {
+                        Palette::PINK
+                    } else {
+                        Palette::LIGHT_PURPLE
+                    })
                     .fg(Palette::DARK_GRAY),
             )
             .wrap(Wrap { trim: false })
             .block(Block::default().padding(Padding::left(1)));
-            frame.render_widget(current_app_text, layout[layout.len() - 1]);
-        }
-    }
 
-    match &state.current_view {
-        CurrentView::ResourceList(scope) => {
+            frame.render_widget(breadcrumb_widget, *layout_chunk);
+        });
+
+    match current_view {
+        View::Organizations { .. }
+        | View::Apps { .. }
+        | View::Machines { .. }
+        | View::Volumes { .. }
+        | View::Secrets { .. } => {
             if is_multi_select_shown {
                 let multi_select_reason_feedback_text = match state.multi_select_mode {
                     MultiSelectMode::On(MultiSelectModeReason::RestartMachines) => {
@@ -361,28 +448,25 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
                     multi_select_reason_feedback_text
                         .to_text()
                         .bold()
-                        .fg(Palette::DARK_TEAL),
+                        .fg(Palette::TEAL),
                 )
                 .wrap(Wrap { trim: false })
                 .block(Block::default().padding(Padding::left(1)));
                 frame.render_widget(multi_select_reason_feedback_text, layout[0]);
             }
 
-            let current_scope = scope;
             // Set the correct index for the selected resource
-            let shared_state_guard = state.shared_state.lock().unwrap();
-            let resource_list = &shared_state_guard.resource_list;
-
+            let resource_list = &state.resource_list;
             let mut table_state = TableState::default();
             let selected_index = resource_list.state.selected();
             table_state.select(selected_index);
 
-            let headers = current_scope.headers();
+            let headers = current_view.headers();
             let max_cell_width = (layout[0].width as usize).saturating_sub(4) / headers.len();
 
             // Skip ids for apps and machines as we don't show them.
-            let data_skip_index = match current_scope {
-                CurrentScope::Apps | CurrentScope::Machines => 1,
+            let data_skip_index = match current_view {
+                View::Organizations { .. } | View::Apps { .. } | View::Machines { .. } => 1,
                 _ => 0,
             };
 
@@ -410,7 +494,7 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
 
                         if is_multi_select_shown && i == 0 {
                             let prefix = if resource_list.multi_select_state.contains(&row[0]) {
-                                Span::from("[x] ").fg(Palette::DARK_TEAL)
+                                Span::from("[x] ").fg(Palette::TEAL)
                             } else {
                                 Span::from("[ ] ")
                             };
@@ -436,9 +520,25 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
             .block(
                 Block::default()
                     .title(Line::from({
-                        let mut spans = vec![Span::from(format!(" {} ", current_scope))
-                            .bold()
-                            .fg(Palette::PINK)];
+                        let (is_view_orgs, is_admin_only) = match current_view {
+                            View::Organizations { ref filter } => (true, filter.is_admin_only()),
+                            _ => (false, false),
+                        };
+                        let scope_skip_index = if is_view_orgs { 0 } else { 1 };
+                        let scopes = state.get_scopes().iter().skip(scope_skip_index).join("/");
+                        let mut spans = vec![
+                            Span::from(format!(" {}(", current_view))
+                                .bold()
+                                .fg(Palette::PINK),
+                            Span::from(scopes)
+                                .bold()
+                                .fg(if is_view_orgs && is_admin_only {
+                                    Palette::BLUE
+                                } else {
+                                    Palette::LIGHT_PURPLE
+                                }),
+                            Span::from(") ").bold().fg(Palette::PINK),
+                        ];
                         if !resource_list.search_filter.is_empty() {
                             spans.push(Span::styled(
                                 format!("/{}", resource_list.search_filter),
@@ -470,8 +570,7 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
                 &mut table_state,
             );
         }
-        CurrentView::AppLogs(opts) => {
-            // info!("Logs opts: {:#?}", opts);
+        View::AppLogs { .. } => {
             let logs = TuiLoggerSmartWidget::default()
                 .border_style(Style::new().fg({
                     // if !resource_list.search_filter.is_empty() {
@@ -486,8 +585,12 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
                 .highlight_style(Style::default().bg(Palette::DARK_PURPLE))
                 .title_target(Line::from(" Regions ").fg(Palette::PINK))
                 .title_log(Line::from({
-                    let spans =
-                        vec![Span::from(format!(" App {} logs", opts.app_name)).fg(Palette::PINK)];
+                    let scopes = state.get_scopes().iter().skip(1).join("/");
+                    let spans = vec![
+                        Span::from(" App logs(").bold().fg(Palette::PINK),
+                        Span::from(scopes).bold().fg(Palette::LIGHT_PURPLE),
+                        Span::from(") ").bold().fg(Palette::PINK),
+                    ];
                     // if !resource_list.search_filter.is_empty() {
                     //     spans.push(Span::styled(
                     //         format!("/{}", resource_list.search_filter),
@@ -514,7 +617,7 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
 
             frame.render_widget(logs, layout[0]);
         }
-        CurrentView::MachineLogs(opts) => {
+        View::MachineLogs { .. } => {
             // info!("Logs opts: {:#?}", opts);
             let logs = TuiLoggerWidget::default()
                 .block(
@@ -530,12 +633,12 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
                             }
                         }))
                         .title(Line::from({
-                            let spans = vec![Span::from(format!(
-                                " Machine {} logs ",
-                                opts.vm_id.clone().unwrap()
-                            ))
-                            .bold()
-                            .fg(Palette::PINK)];
+                            let scopes = state.get_scopes().iter().skip(1).join("/");
+                            let spans = vec![
+                                Span::from(" Machine logs(").bold().fg(Palette::PINK),
+                                Span::from(scopes).bold().fg(Palette::LIGHT_PURPLE),
+                                Span::from(") ").bold().fg(Palette::PINK),
+                            ];
                             // if !resource_list.search_filter.is_empty() {
                             //     spans.push(Span::styled(
                             //         format!("/{}", resource_list.search_filter),
@@ -566,24 +669,105 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
     }
 }
 
+fn render_view_list_popup(
+    frame: &mut Frame,
+    area: Rect,
+    popup: Block,
+    popup_state: &RdrPopup,
+    headers: &[&str],
+    data: &[Vec<String>],
+    percent_x: u16,
+    percent_y: u16,
+    with_title: bool,
+    custom_widths: Option<Vec<usize>>,
+    op_actions: Vec<&CheckBox>,
+    popup_actions: Vec<&TextBox>,
+) {
+    // Calculate constraints based on custom widths or uniform distribution
+    let constraints = if let Some(widths) = &custom_widths {
+        // Variable width columns
+        widths
+            .iter()
+            .map(|w| Constraint::Length(*w as u16))
+            .collect::<Vec<_>>()
+    } else {
+        // Uniform width columns
+        let max_cell_width =
+            ((area.width as usize) * percent_x as usize / 100).saturating_sub(4) / headers.len();
+        vec![Constraint::Length(max_cell_width as u16); headers.len()]
+    };
+
+    let rows = data.iter().map(|row| {
+        let cells = row.iter().enumerate().map(|(i, value)| {
+            let max_width = if let Some(widths) = &custom_widths {
+                widths[i]
+            } else {
+                ((area.width as usize) * percent_x as usize / 100).saturating_sub(4) / headers.len()
+            };
+
+            let content = if value.width() > max_width {
+                let truncated: String = value.chars().take(max_width.saturating_sub(3)).collect();
+                format!("{}…", truncated)
+            } else {
+                value.clone()
+            };
+            Cell::from(Line::from(content))
+        });
+        Row::new(cells)
+    });
+
+    let mut table = Table::new(rows, constraints)
+        .header(Row::new(
+            headers
+                .iter()
+                .map(|v| Cell::from((*v).fg(Palette::LIGHT_PINK).bold())),
+        ))
+        .column_spacing(0);
+
+    if with_title {
+        table = table.block(
+            Block::default()
+                .title(
+                    Line::from(Span::from(&popup_state.message))
+                        .bold()
+                        .fg(Palette::LIGHT_PURPLE),
+                )
+                .title_alignment(Alignment::Center)
+                .padding(Padding::vertical(1)),
+        );
+    }
+
+    render_popup(
+        frame,
+        area,
+        percent_x,
+        percent_y,
+        popup,
+        table,
+        None,
+        String::from(""),
+        op_actions,
+        popup_actions,
+    );
+}
+
 fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
-    let shared_state_guard = state.shared_state.lock().unwrap();
-    let popup_state = &shared_state_guard.popup;
+    let current_view = state.get_current_view();
+    let popup_state = &state.popup;
 
     if let Some(popup_state) = popup_state {
         let (title, popup_actions_index) = match popup_state.popup_type {
             PopupType::DestroyResourcePopup => {
-                let popup_actions_index =
-                    if state.current_view == CurrentView::ResourceList(CurrentScope::Machines) {
-                        1
-                    } else {
-                        0
-                    };
-                let title = match state.current_view {
-                    CurrentView::ResourceList(CurrentScope::Apps) => "Destroy the app",
-                    CurrentView::ResourceList(CurrentScope::Machines) => "Destroy the machine",
-                    CurrentView::ResourceList(CurrentScope::Volumes) => "Destroy the volume",
-                    CurrentView::ResourceList(CurrentScope::Secrets) => "Stage Unset the secret",
+                let popup_actions_index = if matches!(current_view, View::Machines { .. }) {
+                    1
+                } else {
+                    0
+                };
+                let title = match current_view {
+                    View::Apps { .. } => "Destroy the app",
+                    View::Machines { .. } => "Destroy the machine",
+                    View::Volumes { .. } => "Destroy the volume",
+                    View::Secrets { .. } => "Stage Unset the secret",
                     _ => "Destroy the resource",
                 };
                 (
@@ -596,9 +780,9 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
                 )
             }
             PopupType::RestartResourcePopup => {
-                let title = match state.current_view {
-                    CurrentView::ResourceList(CurrentScope::Apps) => "Restart the app",
-                    CurrentView::ResourceList(CurrentScope::Machines) => "Restart the machines",
+                let title = match current_view {
+                    View::Apps { .. } => "Restart the app",
+                    View::Machines { .. } => "Restart the machines",
                     _ => "Restart the resource",
                 };
                 (
@@ -626,6 +810,30 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
                 ]),
                 0,
             ),
+            PopupType::CreateOrganizationInvitePopup => (
+                Line::from(vec![
+                    "📩 ".to_span(),
+                    "Organization Invite".fg(Palette::BLUE).bold(),
+                    " 📩".to_span(),
+                ]),
+                0,
+            ),
+            PopupType::DeleteOrganizationMembershipPopup => (
+                Line::from(vec![
+                    "❌ ".to_span(),
+                    "Remove Membership".fg(Palette::BLUE).bold(),
+                    " ❌".to_span(),
+                ]),
+                0,
+            ),
+            PopupType::ViewOrganizationMembersPopup => (
+                Line::from(vec![
+                    "👥 ".to_span(),
+                    "Organization Members".fg(Palette::BLUE).bold(),
+                    " 👥".to_span(),
+                ]),
+                0,
+            ),
             PopupType::ViewAppReleasesPopup => (
                 Line::from(vec![
                     "🤖 ".to_span(),
@@ -639,6 +847,14 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
                     "🌟 ".to_span(),
                     "App services".fg(Color::Yellow).bold(),
                     " 🌟".to_span(),
+                ]),
+                0,
+            ),
+            PopupType::ViewCommandsPopup => (
+                Line::from(vec![
+                    "🪁 ".to_span(),
+                    "Commands".fg(Palette::PINK).bold(),
+                    " 🪁".to_span(),
                 ]),
                 0,
             ),
@@ -709,174 +925,166 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
             .filter_map(|action| action.as_any().downcast_ref::<TextBox>())
             .collect();
 
-        if matches!(popup_state.popup_type, PopupType::ViewAppReleasesPopup) {
-            let percent_x = 100;
-            let percent_y = 75;
-            let headers = [
-                "Version",
-                "Status",
-                "Description",
-                "User",
-                "Date",
-                "Docker Image",
-            ];
-            let mut max_cell_widths = vec![10, 10, 12, 12, 20];
-            // INFO: calc width based on percent_x, then - padding 2, border 2 then - sum of preceding
-            // cell widths
-            let last_col_max_cell_width = ((area.width as usize) * percent_x / 100_usize)
-                .saturating_sub(4)
-                .saturating_sub(max_cell_widths.iter().sum());
-            max_cell_widths.push(last_col_max_cell_width);
+        match popup_state.popup_type {
+            PopupType::ViewAppReleasesPopup => {
+                let headers = &[
+                    "Version",
+                    "Status",
+                    "Description",
+                    "User",
+                    "Date",
+                    "Docker Image",
+                ];
+                let mut max_cell_widths = vec![10, 10, 12, 12, 20];
 
-            let app_releases_list = &shared_state_guard.app_releases_list.clone();
-            let rows = app_releases_list.iter().map(|row| {
-                let cells = row.iter().enumerate().map(|(i, value)| {
-                    let max_cell_width = max_cell_widths[i];
-                    let content = if value.width() > max_cell_width {
-                        let truncated: String = value
-                            .chars()
-                            .take(max_cell_width.saturating_sub(3))
-                            .collect();
-                        format!("{}…", truncated)
-                    } else {
-                        value.clone()
-                    };
-                    Cell::from(Line::from(content))
-                });
-                Row::new(cells)
-            });
+                // Calculate last column width
+                let last_col_max_cell_width = ((area.width as usize) * 100 / 100_usize)
+                    .saturating_sub(4)
+                    .saturating_sub(max_cell_widths.iter().sum());
+                max_cell_widths.push(last_col_max_cell_width);
 
-            let content = Table::new(
-                rows,
-                max_cell_widths
+                render_view_list_popup(
+                    frame,
+                    area,
+                    popup,
+                    popup_state,
+                    headers,
+                    &state.app_releases_list,
+                    100,
+                    75,
+                    true,
+                    Some(max_cell_widths),
+                    op_actions,
+                    popup_actions,
+                );
+            }
+
+            PopupType::ViewAppServicesPopup => {
+                let headers = &[
+                    "Protocol",
+                    "Ports",
+                    "Handlers",
+                    "Force Https",
+                    "Process Group",
+                    "Regions",
+                    "Machines",
+                ];
+
+                render_view_list_popup(
+                    frame,
+                    area,
+                    popup,
+                    popup_state,
+                    headers,
+                    &state.app_services_list,
+                    100,
+                    75,
+                    true,
+                    None,
+                    op_actions,
+                    popup_actions,
+                );
+            }
+
+            PopupType::ViewCommandsPopup => {
+                let headers = &["Name", "Aliases"];
+                let commands_list = COMMANDS
                     .iter()
-                    .map(|w| Constraint::Length(*w as u16)),
-            )
-            .header(Row::new(
-                headers
-                    .to_vec()
-                    .iter()
-                    .map(|v| Cell::from((*v).fg(Palette::LIGHT_PINK).bold())),
-            ))
-            .column_spacing(0)
-            .block(
-                Block::default()
-                    .title(
-                        Line::from(Span::from(&popup_state.message))
-                            .bold()
-                            .fg(Palette::LIGHT_PURPLE),
-                    )
-                    .title_alignment(Alignment::Center)
-                    .padding(Padding::vertical(1)),
-            );
+                    .filter_map(|&cmd_str| {
+                        cmd_str
+                            .parse::<Command>()
+                            .ok()
+                            .map(|cmd| vec![cmd_str.to_string(), cmd.to_aliases().join(", ")])
+                    })
+                    .collect::<Vec<Vec<String>>>();
 
-            render_popup(
-                frame,
-                area,
-                percent_x as u16,
-                percent_y as u16,
-                popup,
-                content,
-                op_actions,
-                popup_actions,
-            );
-        } else if matches!(popup_state.popup_type, PopupType::ViewAppServicesPopup) {
-            let percent_x = 100;
-            let percent_y = 75;
-            let headers = [
-                "Protocol",
-                "Ports",
-                "Handlers",
-                "Force Https",
-                "Process Group",
-                "Regions",
-                "Machines",
-            ];
-            // INFO: calc width based on percent_x, then - padding 2, border 2
-            let max_cell_width =
-                ((area.width as usize) * percent_x / 100_usize).saturating_sub(4) / headers.len();
-            let app_services_list = &shared_state_guard.app_services_list.clone();
-            let rows = app_services_list.iter().map(|row| {
-                let cells = row.iter().map(|value| {
-                    let content = if value.width() > max_cell_width {
-                        let truncated: String = value
-                            .chars()
-                            .take(max_cell_width.saturating_sub(3))
-                            .collect();
-                        format!("{}…", truncated)
-                    } else {
-                        value.clone()
-                    };
-                    Cell::from(Line::from(content))
-                });
-                Row::new(cells)
-            });
+                render_view_list_popup(
+                    frame,
+                    area,
+                    popup,
+                    popup_state,
+                    headers,
+                    &commands_list,
+                    100,
+                    75,
+                    false,
+                    None,
+                    op_actions,
+                    popup_actions,
+                );
+            }
 
-            let content = Table::new(
-                rows,
-                &[Constraint::Length(max_cell_width as u16)].repeat(headers.len()),
-            )
-            .header(Row::new(
-                headers
-                    .to_vec()
-                    .iter()
-                    .map(|v| Cell::from((*v).fg(Palette::LIGHT_PINK).bold())),
-            ))
-            .column_spacing(0)
-            .block(
-                Block::default()
-                    .title(
-                        Line::from(Span::from(&popup_state.message))
-                            .bold()
-                            .fg(Palette::LIGHT_PURPLE),
-                    )
-                    .title_alignment(Alignment::Center)
-                    .padding(Padding::vertical(1)),
-            );
+            PopupType::ViewOrganizationMembersPopup => {
+                let headers = &["Name", "Email", "Role"];
 
-            render_popup(
-                frame,
-                area,
-                percent_x as u16,
-                percent_y as u16,
-                popup,
-                content,
-                op_actions,
-                popup_actions,
-            );
-        } else {
-            let percent_x = 50;
-            let percent_y = 30;
-            //INFO: calc width based on percent_x and then - padding 2, border 2
-            let mut max_line_width = (area.width as usize) * percent_x / 100_usize;
-            max_line_width = max_line_width.saturating_sub(4);
+                render_view_list_popup(
+                    frame,
+                    area,
+                    popup,
+                    popup_state,
+                    headers,
+                    &state.organization_members_list,
+                    100,
+                    75,
+                    true,
+                    None,
+                    op_actions,
+                    popup_actions,
+                );
+            }
 
-            let lines = [popup_state.message.to_string()];
-            let lines: Vec<Line> = lines
-                .into_iter()
-                .flat_map(|v| {
-                    if v.width() > max_line_width {
-                        textwrap::wrap(&v, textwrap::Options::new(max_line_width))
-                            .into_iter()
-                            .map(|v| Line::from(v.to_string()))
-                            .collect()
-                    } else {
-                        vec![Line::from(v)]
+            // Default case for other popup types
+            _ => {
+                let percent_x = 50;
+                let percent_y = 30;
+                //INFO: calc width based on percent_x and then - padding 2, border 2
+                let mut max_line_width = (area.width as usize) * percent_x / 100_usize;
+                max_line_width = max_line_width.saturating_sub(4);
+
+                let lines = [popup_state.message.to_string()];
+                let lines: Vec<Line> = lines
+                    .into_iter()
+                    .flat_map(|v| {
+                        if v.width() > max_line_width {
+                            textwrap::wrap(&v, textwrap::Options::new(max_line_width))
+                                .into_iter()
+                                .map(|v| Line::from(v.to_string()))
+                                .collect()
+                        } else {
+                            vec![Line::from(v)]
+                        }
+                    })
+                    .collect();
+                let content = Text::from(lines);
+                let mut render_input = None;
+                let mut input_label = String::from("");
+
+                if matches!(
+                    popup_state.popup_type,
+                    PopupType::CreateOrganizationInvitePopup
+                ) || matches!(
+                    popup_state.popup_type,
+                    PopupType::DeleteOrganizationMembershipPopup
+                ) {
+                    if let InputState::Email { input } = &state.input_state {
+                        render_input = Some(input);
+                        input_label = String::from("Email: ");
                     }
-                })
-                .collect();
-            let content = Text::from(lines);
+                }
 
-            render_popup(
-                frame,
-                area,
-                percent_x as u16,
-                percent_y as u16,
-                popup,
-                content,
-                op_actions,
-                popup_actions,
-            );
+                render_popup(
+                    frame,
+                    area,
+                    percent_x as u16,
+                    percent_y as u16,
+                    popup,
+                    content,
+                    render_input,
+                    input_label,
+                    op_actions,
+                    popup_actions,
+                );
+            }
         }
     }
 }
@@ -890,7 +1098,10 @@ pub fn render(state: &mut State, frame: &mut Frame) {
         }
         let main_layout = Layout::horizontal(main_layout).split(frame.area());
         let mut layout = vec![Constraint::Length(8), Constraint::Min(0)];
-        if !matches!(state.input_state, InputState::Hidden { .. }) {
+        if matches!(
+            state.input_state,
+            InputState::Command { .. } | InputState::Search { .. }
+        ) {
             layout.insert(1, Constraint::Length(3));
         }
         let outer = Block::default().bg(Color::Black);
@@ -907,7 +1118,10 @@ pub fn render(state: &mut State, frame: &mut Frame) {
         render_debugger(state, frame, main_layout[1]);
 
         render_header(state, frame, layout[0]);
-        if !matches!(state.input_state, InputState::Hidden { .. }) {
+        if matches!(
+            state.input_state,
+            InputState::Command { .. } | InputState::Search { .. }
+        ) {
             render_input_bar(state, frame, layout[1]);
         }
         render_current_view(state, frame, layout.last().unwrap().to_owned());
