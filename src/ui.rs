@@ -7,6 +7,7 @@ use ratatui::symbols::border;
 use ratatui::text::{Line, Span, Text, ToSpan, ToText};
 use ratatui::widgets::{Block, Borders, Cell, Padding, Paragraph, Row, Table, TableState, Wrap};
 use ratatui::Frame;
+use shadow_rs::shadow;
 use tui_big_text::{BigText, PixelSize};
 use tui_input::Input;
 use unicode_width::UnicodeWidthStr;
@@ -22,6 +23,7 @@ use crate::widgets::log_viewer::{TuiLoggerLevelOutput, TuiLoggerSmartWidget, Tui
 use crate::widgets::popup::render_popup;
 use crate::widgets::{fly_balloon, fly_visual};
 
+shadow!(build);
 pub struct Palette;
 
 impl Palette {
@@ -278,9 +280,9 @@ fn render_header(state: &mut State, frame: &mut Frame, area: Rect) {
         Block::default()
             .title(vec![
                 "★ ".fg(Palette::TEAL),
-                env!("CARGO_PKG_NAME").bold(),
+                build::PROJECT_NAME.bold(),
                 "-".fg(Color::White),
-                env!("CARGO_PKG_VERSION").into(),
+                build::PKG_VERSION.into(),
                 " ★".fg(Palette::TEAL),
             ])
             .title_alignment(Alignment::Center),
