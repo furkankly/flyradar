@@ -1,3 +1,4 @@
+pub mod custom_humantime_serde;
 pub mod machine_types;
 pub mod machines;
 pub mod request_builder;
