@@ -4,6 +4,8 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 
+use super::custom_humantime_serde;
+
 pub const MACHINE_CONFIG_METADATA_KEY_FLY_MANAGED_POSTGRES: &str = "fly-managed-postgres";
 pub const MACHINE_CONFIG_METADATA_KEY_FLY_PLATFORM_VERSION: &str = "fly_platform_version";
 pub const MACHINE_CONFIG_METADATA_KEY_FLY_RELEASE_ID: &str = "fly_release_id";
@@ -26,15 +28,17 @@ pub const MACHINE_STATE_CREATED: &str = "created";
 pub const DEFAULT_VM_SIZE: &str = "shared-cpu-1x";
 pub const DEFAULT_GPU_VM_SIZE: &str = "performance-8x";
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum HostStatus {
+    #[default]
     Ok,
     Unknown,
     Unreachable,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
 pub struct Machine {
     pub id: String,
     pub name: String,
@@ -172,7 +176,8 @@ pub struct HealthCheckStatus {
     pub critical: i32,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Deserialize, Debug, Default)]
+#[serde(default)]
 pub struct MachineImageRef {
     pub registry: String,
     pub repository: String,
@@ -256,7 +261,8 @@ pub enum MachineRestartPolicy {
 
 /// The Machine restart policy defines whether and how flyd restarts a Machine after its main process exits.
 /// See https://fly.io/docs/machines/guides-examples/machine-restart-policy/.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
 pub struct MachineRestart {
     /// - no: Never try to restart a Machine automatically when its main process exits, whether that's on purpose or on a crash.
     /// - always: Always restart a Machine automatically and never let it enter a stopped state, even when the main process exits cleanly.
@@ -271,7 +277,8 @@ pub struct MachineRestart {
     pub gpu_bid_price: Option<f32>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
 pub struct MachineMount {
     pub encrypted: bool,
     pub path: String,
@@ -283,7 +290,8 @@ pub struct MachineMount {
     pub size_gb_limit: Option<i32>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
 pub struct MachineGuest {
     pub cpu_kind: String,
     pub cpus: i32,
@@ -294,7 +302,8 @@ pub struct MachineGuest {
     pub kernel_args: Option<Vec<String>>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
 pub struct MachineMetrics {
     pub port: i32,
     pub path: String,
@@ -307,7 +316,8 @@ pub enum MachineCheckKind {
     Readiness,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
 pub struct MachineCheck {
     /// The port to connect to, often the same as internal_port
     pub port: Option<i32>,
@@ -320,16 +330,16 @@ pub struct MachineCheck {
     pub kind: Option<MachineCheckKind>,
 
     /// The time between connectivity checks
-    #[serde(with = "humantime_serde")]
-    pub interval: Option<Duration>,
+    #[serde(with = "custom_humantime_serde")]
+    pub interval: Duration,
 
     /// The maximum time a connection can take before being reported as failing its health check
-    #[serde(with = "humantime_serde")]
-    pub timeout: Option<Duration>,
+    #[serde(with = "custom_humantime_serde")]
+    pub timeout: Duration,
 
     /// The time to wait after a VM starts before checking its health
-    #[serde(with = "humantime_serde")]
-    pub grace_period: Option<Duration>,
+    #[serde(with = "custom_humantime_serde")]
+    pub grace_period: Duration,
 
     /// For http checks, the HTTP method to use to when making the request
     pub method: Option<String>,
@@ -415,7 +425,8 @@ pub struct HTTPResponseOptions {
     pub pristine: Option<bool>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
 pub struct MachineService {
     pub protocol: String,
     pub internal_port: i32,
@@ -441,7 +452,8 @@ pub struct MachineServiceConcurrency {
     pub soft_limit: i32,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
 pub struct MachineConfig {
     /// An object filled with key/value pairs to be set as environment variables
     pub env: HashMap<String, String>,
@@ -478,7 +490,8 @@ pub struct MachineConfig {
     pub disable_machine_autostart: Option<bool>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+#[serde(default)]
 pub struct Static {
     pub guest_path: String,
     pub url_prefix: String,
@@ -486,7 +499,8 @@ pub struct Static {
     pub index_document: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
 pub struct MachineInit {
     pub exec: Option<Vec<String>>,
     pub entrypoint: Option<Vec<String>>,
@@ -496,7 +510,8 @@ pub struct MachineInit {
     pub kernel_args: Option<Vec<String>>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
 pub struct DNSConfig {
     pub skip_registration: bool,
     pub nameservers: Option<Vec<String>>,
@@ -519,14 +534,17 @@ pub struct DnsOption {
     pub value: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
 pub struct StopConfig {
-    pub timeout: Option<Duration>,
+    #[serde(with = "custom_humantime_serde")]
+    pub timeout: Duration,
     pub signal: Option<String>,
 }
 
 /// A file that will be written to the Machine. One of RawValue or SecretName must be set.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
 pub struct File {
     /// GuestPath is the path on the machine where the file will be written and must be an absolute path.
     /// For example: /full/path/to/file.json
@@ -581,7 +599,8 @@ pub struct LaunchMachineInput {
     // Timeout             int    `json:"-"`
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
 pub struct MachineProcess {
     #[serde(rename = "exec")]
     pub exec_override: Option<Vec<String>>,
