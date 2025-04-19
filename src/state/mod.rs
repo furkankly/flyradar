@@ -5,6 +5,7 @@ use std::time::Duration;
 use color_eyre::eyre::OptionExt;
 use dashmap::{DashMap, DashSet};
 use focusable::FocusContainer;
+use itertools::Itertools;
 use strum::IntoEnumIterator;
 use tokio::sync::mpsc::{self, Sender};
 use tracing::{error, log};
@@ -764,7 +765,7 @@ impl State {
             }
             View::Machines { .. } => {
                 let machine: ListMachine = selected_resource.into();
-                message = format!("{} machine: {}?", message, machine.name);
+                message = format!("{} machine: {}?", message, machine.id);
                 self.open_popup(
                     message,
                     PopupType::DestroyResourcePopup,
@@ -794,11 +795,20 @@ impl State {
                         .count()
                 };
                 if matches <= 2 {
-                    message.push_str(&format!("\n\nWarning! Every volume is pinned to a specific physical host. You should create two or more volumes per application. Deleting this volume will leave you with {} volume(s) for this application, and it is not reversible.\n\nLearn more at https://fly.io/docs/volumes/overview/",matches -1));
+                    message.push_str(&format!("\n\nWarning! Every volume is pinned to a specific physical host. You should create two or more volumes per application. Deleting this volume will leave you with {} volume(s) for this application, and it is not reversible.\n\nLearn more at https://fly.io/docs/volumes/overview/", matches -1));
                 }
             }
             View::Secrets { .. } => {
-                message = String::from("Are you sure to stage unset the selected secrets?");
+                let keys = self
+                    .resource_list
+                    .multi_select_state
+                    .iter()
+                    .map(|key| key.to_string())
+                    .join(", ");
+                message = format!(
+                    "Are you sure to stage unset the selected secrets: {}?",
+                    keys,
+                );
                 message.push_str("\n\nWarning! This will be staged but won't affect VMs. Run \"fly secrets deploy\" for this app to apply the changes.");
             }
             _ => {}
@@ -879,7 +889,13 @@ impl State {
                 message = format!("{} this app: {}?", message, app.name);
             }
             View::Machines { .. } => {
-                message = format!("{} the selected machines?", message);
+                let machines = self
+                    .resource_list
+                    .multi_select_state
+                    .iter()
+                    .map(|machine| machine.to_string())
+                    .join(", ");
+                message = format!("{} the selected machines: {}?", message, machines);
             }
             _ => {}
         }
@@ -1019,7 +1035,13 @@ impl State {
         Ok(())
     }
     pub fn open_start_machines_popup(&mut self) {
-        let message = String::from("Are you sure to start the selected machines?");
+        let machines = self
+            .resource_list
+            .multi_select_state
+            .iter()
+            .map(|machine| machine.to_string())
+            .join(", ");
+        let message = format!("Are you sure to start the selected machines: {}?", machines);
         self.open_popup(message, PopupType::StartMachinesPopup, None);
     }
     pub fn process_start_machines_popup(&self) -> RdrResult<Option<IoReqEvent>> {
@@ -1041,7 +1063,16 @@ impl State {
         }
     }
     pub fn open_suspend_machines_popup(&mut self) {
-        let message = String::from("Are you sure to suspend the selected machines?");
+        let machines = self
+            .resource_list
+            .multi_select_state
+            .iter()
+            .map(|machine| machine.to_string())
+            .join(", ");
+        let message = format!(
+            "Are you sure to suspend the selected machines: {}?",
+            machines,
+        );
         self.open_popup(message, PopupType::SuspendMachinesPopup, None);
     }
     pub fn process_suspend_machines_popup(&self) -> RdrResult<Option<IoReqEvent>> {
@@ -1063,7 +1094,13 @@ impl State {
         }
     }
     pub fn open_stop_machines_popup(&mut self) {
-        let message = String::from("Are you sure to stop the selected machines?");
+        let machines = self
+            .resource_list
+            .multi_select_state
+            .iter()
+            .map(|machine| machine.to_string())
+            .join(", ");
+        let message = format!("Are you sure to stop the selected machines: {}?", machines);
         self.open_popup(message, PopupType::StopMachinesPopup, None);
     }
     pub fn process_stop_machines_popup(&self) -> RdrResult<Option<IoReqEvent>> {
@@ -1089,7 +1126,8 @@ impl State {
         }
     }
     pub fn open_kill_machine_popup(&mut self) {
-        let message = String::from("Are you sure to kill this machine?");
+        let machine: ListMachine = self.resource_list.selected().cloned().unwrap().into();
+        let message = format!("Are you sure to kill this machine: {}?", machine.id);
         self.open_popup(message, PopupType::KillMachinePopup, None);
     }
     pub fn process_kill_machine_popup(&self) -> RdrResult<Option<IoReqEvent>> {
@@ -1107,7 +1145,16 @@ impl State {
         }
     }
     pub fn open_cordon_machines_popup(&mut self) {
-        let message = String::from("Are you sure to cordon the selected machines?");
+        let machines = self
+            .resource_list
+            .multi_select_state
+            .iter()
+            .map(|machine| machine.to_string())
+            .join(", ");
+        let message = format!(
+            "Are you sure to cordon the selected machines: {}?",
+            machines
+        );
         self.open_popup(message, PopupType::CordonMachinesPopup, None);
     }
     pub fn process_cordon_machines_popup(&self) -> RdrResult<Option<IoReqEvent>> {
@@ -1129,7 +1176,16 @@ impl State {
         }
     }
     pub fn open_uncordon_machines_popup(&mut self) {
-        let message = String::from("Are you sure to uncordon the selected machines?");
+        let machines = self
+            .resource_list
+            .multi_select_state
+            .iter()
+            .map(|machine| machine.to_string())
+            .join(", ");
+        let message = format!(
+            "Are you sure to uncordon the selected machines: {}?",
+            machines
+        );
         self.open_popup(message, PopupType::UncordonMachinesPopup, None);
     }
     pub fn process_uncordon_machines_popup(&self) -> RdrResult<Option<IoReqEvent>> {
