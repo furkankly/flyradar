@@ -166,6 +166,9 @@ pub async fn handle_key_events(key_event: KeyEvent, state: &mut State) -> RdrRes
                 }
             } else {
                 match key_event.code {
+                    KeyCode::Char('a') if key_event.modifiers == KeyModifiers::CONTROL => {
+                        state.open_view_commands_popup()?;
+                    }
                     KeyCode::Char(':') => state.enter_command_mode(),
                     KeyCode::Char('n') => state
                         .debugger_state
@@ -326,11 +329,6 @@ pub async fn handle_key_events(key_event: KeyEvent, state: &mut State) -> RdrRes
                                 state.start_unset_secrets();
                             }
                             // Common
-                            (KeyCode::Char('a'), _)
-                                if key_event.modifiers == KeyModifiers::CONTROL =>
-                            {
-                                state.open_view_commands_popup()?;
-                            }
                             (KeyCode::Char('/'), _) => {
                                 state.enter_search_mode();
                             }
