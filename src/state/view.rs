@@ -25,7 +25,7 @@ impl View {
         match self {
             View::Organizations { .. } => &["Name", "Viewer Role", "Slug", "Type"],
             View::Apps { .. } => &["Name", "Organization", "Status", "Latest Deployment"],
-            View::Machines { .. } => &["Name", "State", "Region", "Updated At"],
+            View::Machines { .. } => &["Id", "Name", "State", "Region", "Updated At"],
             View::Volumes { .. } => &[
                 "Id",
                 "State",
