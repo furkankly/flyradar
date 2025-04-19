@@ -7,11 +7,11 @@ use ratatui::symbols::border;
 use ratatui::text::{Line, Span, Text, ToSpan, ToText};
 use ratatui::widgets::{Block, Borders, Cell, Padding, Paragraph, Row, Table, TableState, Wrap};
 use ratatui::Frame;
-use shadow_rs::shadow;
 use tui_big_text::{BigText, PixelSize};
 use tui_input::Input;
 use unicode_width::UnicodeWidthStr;
 
+use crate::build;
 use crate::command::{Command, COMMANDS};
 use crate::state::view::View;
 use crate::state::{
@@ -23,7 +23,6 @@ use crate::widgets::log_viewer::{TuiLoggerLevelOutput, TuiLoggerSmartWidget, Tui
 use crate::widgets::popup::render_popup;
 use crate::widgets::{fly_balloon, fly_visual};
 
-shadow!(build);
 pub struct Palette;
 
 impl Palette {
@@ -466,9 +465,9 @@ fn render_current_view(state: &mut State, frame: &mut Frame, area: Rect) {
             let headers = current_view.headers();
             let max_cell_width = (layout[0].width as usize).saturating_sub(4) / headers.len();
 
-            // Skip ids for apps and machines as we don't show them.
+            // Skip ids for orgs and apps as we don't show them.
             let data_skip_index = match current_view {
-                View::Organizations { .. } | View::Apps { .. } | View::Machines { .. } => 1,
+                View::Organizations { .. } | View::Apps { .. } => 1,
                 _ => 0,
             };
 
@@ -815,7 +814,7 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
             PopupType::CreateOrganizationInvitePopup => (
                 Line::from(vec![
                     "📩 ".to_span(),
-                    "Organization Invite".fg(Palette::BLUE).bold(),
+                    "Organization invitation".fg(Palette::BLUE).bold(),
                     " 📩".to_span(),
                 ]),
                 0,
@@ -823,7 +822,7 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
             PopupType::DeleteOrganizationMembershipPopup => (
                 Line::from(vec![
                     "❌ ".to_span(),
-                    "Remove Membership".fg(Palette::BLUE).bold(),
+                    "Remove membership".fg(Palette::BLUE).bold(),
                     " ❌".to_span(),
                 ]),
                 0,
@@ -831,7 +830,7 @@ fn render_radar_popup(state: &mut State, frame: &mut Frame, area: Rect) {
             PopupType::ViewOrganizationMembersPopup => (
                 Line::from(vec![
                     "👥 ".to_span(),
-                    "Organization Members".fg(Palette::BLUE).bold(),
+                    "Organization members".fg(Palette::BLUE).bold(),
                     " 👥".to_span(),
                 ]),
                 0,

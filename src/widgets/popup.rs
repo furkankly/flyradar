@@ -5,6 +5,7 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Clear, Padding, Widget};
 use ratatui::Frame;
+use tracing::info;
 use tui_input::Input;
 use unicode_width::UnicodeWidthStr;
 
@@ -18,7 +19,7 @@ pub fn render_popup<C: Widget>(
     percent_x: u16,
     percent_y: u16,
     popup: Block,
-    content: C,
+    main_content: C,
     input: Option<&Input>,
     input_label: String,
     op_actions: Vec<&CheckBox>,
@@ -29,22 +30,25 @@ pub fn render_popup<C: Widget>(
     let popup_area = popup.inner(area);
     frame.render_widget(Clear, area); //this clears out the background
     frame.render_widget(popup, area);
-    let mut layout = vec![Constraint::Min(0), Constraint::Length(1)];
+    let layout =
+        Layout::vertical(vec![Constraint::Min(0), Constraint::Length(1)]).split(popup_area);
+    let mut content_layout = vec![Constraint::Min(0)];
     if input.is_some() {
-        layout.insert(1, Constraint::Min(0));
+        content_layout.insert(1, Constraint::Length(3));
     }
     if !op_actions.is_empty() {
-        layout.insert(layout.len() - 1, Constraint::Min(0));
+        content_layout.insert(content_layout.len() - 1, Constraint::Min(0));
     }
-    let layout = Layout::vertical(layout).split(popup_area);
-    frame.render_widget(content, layout[0]);
+    let content_layout = Layout::vertical(content_layout).split(layout[0]);
+    frame.render_widget(main_content, content_layout[0]);
+    info!("layout: {:#?}", content_layout);
     if let Some(input) = &input {
         let outer = Block::default()
             .borders(Borders::all())
             .border_style(Style::new().fg(Palette::BLUE));
-        let outer_area = outer.inner(layout[1]);
-        frame.render_widget(outer, layout[1]);
-        let layout = Layout::default()
+        let outer_area = outer.inner(content_layout[1]);
+        frame.render_widget(outer, content_layout[1]);
+        let input_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Length(input_label.width() as u16),
@@ -52,11 +56,11 @@ pub fn render_popup<C: Widget>(
             ])
             .split(outer_area);
 
-        frame.render_widget(input_label, layout[0]);
-        render_input(frame, layout[1], input, Line::from(input.value()));
+        frame.render_widget(input_label, input_layout[0]);
+        render_input(frame, input_layout[1], input, Line::from(input.value()));
     };
     if !op_actions.is_empty() {
-        render_op_actions(frame, layout[layout.len() - 2], op_actions);
+        render_op_actions(frame, content_layout[content_layout.len() - 1], op_actions);
     }
     render_popup_actions(frame, layout[layout.len() - 1], popup_actions);
 }
