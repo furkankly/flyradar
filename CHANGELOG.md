@@ -2,6 +2,21 @@
 
 [**flyradar**](https://flyradar.fly.dev): Manage your Fly.io resources in style🪁
 
+## 0.2.1 - 2025-04-19
+
+### 🐛 Bug Fixes
+
+- *(commands)* Show view commands popup in logs screensby @furkankly
+- *(deserialization)* Fix duration deserialization and overall hardening using defaultsby @furkankly
+
+### 🎨 Styling
+
+- *(layout)* Adjust email layout and other minor style changesby @furkankly
+- *(machines)* Show machine ids in machines views and action popupsby @furkankly
+
+
+**Full Changelog**: https://github.com/furkankly/flyradar/compare/0.2.0...0.2.1
+
 ## 0.2.0 - 2025-04-04
 
 ### 🚀 Features
@@ -17,9 +32,6 @@
 - *(build)* Integrate shadow-rs for build info and use it where possibleby @furkankly
 - *(demo)* Add demoby @furkankly
 
-
-## New Contributors
-* @furkankly made their first contribution in [#10](https://github.com/furkankly/flyradar/pull/10)
 
 **Full Changelog**: https://github.com/furkankly/flyradar/compare/0.1.0...0.2.0
 

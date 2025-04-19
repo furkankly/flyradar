@@ -1,6 +1,6 @@
 [package]
 name = "flyradar"
-version = "0.2.0"
+version = "0.2.1"
 description = "Manage your Fly.io resources in style"
 authors = ["Furkan Kalaycioglu <furkankalaycioglu12@gmail.com>"]
 license = "MIT"
